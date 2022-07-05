@@ -22,6 +22,7 @@ from vilt.datamodules.datamodule_base import get_pretrained_tokenizer
 @ex.automain
 def main(_config):
     _config = copy.deepcopy(_config)
+    print("config:",_config)
 
     loss_names = {
         "itm": 0,
@@ -169,6 +170,7 @@ def main(_config):
         gr.outputs.Textbox(label="description"),
         gr.outputs.Textbox(label="selected token"),
     ]
+    
 
     interface = gr.Interface(
         fn=infer,

@@ -12,7 +12,7 @@ def main(_config):
     _config = copy.deepcopy(_config)
     pl.seed_everything(_config["seed"])
 
-    dm = MTDataModule(_config, dist=True)
+    dm = MTDataModule(_config, dist=True) # 数据集准备
 
     model = ViLTransformerSS(_config)
     exp_name = f'{_config["exp_name"]}'
@@ -47,14 +47,14 @@ def main(_config):
 
     trainer = pl.Trainer(
         gpus=_config["num_gpus"],
-        num_nodes=_config["num_nodes"],
-        precision=_config["precision"],
+        num_nodes=_config["num_nodes"], # number of GPU nodes for distributed training.
+        precision=_config["precision"], #  Full precision (32), half precision (16). Can be used on CPU, GPU or TPUs.
         accelerator="ddp",
-        benchmark=True,
+        benchmark=True, # If true enables cudnn.benchmark.
         deterministic=True,
         max_epochs=_config["max_epoch"] if max_steps is None else 1000,
         max_steps=max_steps,
-        callbacks=callbacks,
+        callbacks=callbacks, # Add a list of callbacks.
         logger=logger,
         prepare_data_per_node=False,
         replace_sampler_ddp=False,

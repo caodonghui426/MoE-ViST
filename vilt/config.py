@@ -19,7 +19,7 @@ def _loss_names(d):
 @ex.config
 def config():
     exp_name = "vilt"
-    seed = 0
+    seed = 101
     datasets = ["coco", "vg", "sbu", "gcc"]
     loss_names = _loss_names({"itm": 1, "mlm": 1})
     batch_size = 4096  # this is a desired batch size; pl trainer will accumulate gradients when per step batch is smaller.
@@ -37,14 +37,14 @@ def config():
     vqav2_label_size = 3129
     max_text_len = 40
     tokenizer = "bert-base-uncased"
-    vocab_size = 30522
+    vocab_size = 30522 # vocabulary词汇数量
     whole_word_masking = False
     mlm_prob = 0.15
     draw_false_text = 0
 
     # Transformer Setting
     vit = "vit_base_patch32_384"
-    hidden_size = 768
+    hidden_size = 768  # 嵌入向量大小
     num_heads = 12
     num_layers = 12
     mlp_ratio = 4
@@ -76,7 +76,8 @@ def config():
     per_gpu_batchsize = 0  # you should define this manually with per_gpu_batch_size=#
     num_gpus = 1
     num_nodes = 1
-    load_path = ""
+    # load_path = "weights/vilt_200k_mlm_itm.ckpt"
+    load_path = "save_model_dict.pt"
     num_workers = 8
     precision = 16
 
