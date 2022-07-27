@@ -10,7 +10,7 @@ from vilt.modules.dist_utils import all_gather
 from vilt.modules.objectives import compute_irtr_recall
 from vilt.gadgets.my_metrics import Accuracy, VQAScore, Scalar
 
-
+# 用于模型评价
 def set_metrics(pl_module):
     for split in ["train", "val"]:
         for k, v in pl_module.hparams.config["loss_names"].items():

@@ -49,7 +49,7 @@ def main(_config):
     # print(summary(model,(1,240,768)))  #这里我们设置shape为（3,256,256）
     # torch.save(model, 'save_model.pt')
 
-    torch.save(model.state_dict(), 'save_model_dict_seed1.pt')
+    torch.save(model.state_dict(), 'save_model_dict.pt')
     model.setup("test")
     model.eval()
 

@@ -1,13 +1,4 @@
-from torch import embedding, nn
-import pytorch_lightning as pl
-import torch
-import numpy as np
-import copy
-
-from vilt.modules import objectives
-from vilt.modules.vilt_module import sensorViLTransformerSS
-from vilt.config import ex
-
+# import gradio as gr
 import torch
 import copy
 import time
@@ -24,33 +15,23 @@ from vilt.config import ex
 from vilt.modules import ViLTransformerSS
 
 from vilt.modules.objectives import cost_matrix_cosine, ipot
+from vilt.modules.vilt_regress import regressViLTransformerSS
 from vilt.transforms import pixelbert_transform
 from vilt.datamodules.datamodule_base import get_pretrained_tokenizer
 
 from torchsummary import summary
-
-class EmbeddingTest(pl.LightningModule):
-    def __init__(self):
-        super().__init__()
-
-        self.linear = nn.Linear(12,768)
-    def forward(self,x):
-        x = self.linear(x)
-        return x
 
 @ex.automain
 def main(_config):
     # pl.seed_everything(0)
     _config = copy.deepcopy(_config)
     print("\033[1;32m config: \033[0m",_config)
-
-
-    model = sensorViLTransformerSS(_config,sensor_class_n= 12,output_class_n = 9)
-    print(model)
+    model = regressViLTransformerSS(_config,sensor_class_n= 12)
+    # print(model)
     # torch.save(model.state_dict(), 'embedding_test_dict.pt')
 
 
-    print(model)
+    # print(model)
     model.setup("test")
     model.eval()
     device = "cuda:0" if _config["num_gpus"] > 0 else "cpu"
@@ -76,7 +57,7 @@ def main(_config):
             batch['sensor'] = sensor.to(device)       
             infer = model(batch)
 
-            print(infer)
+            # print(infer)
             sensor_emb, img_emb = infer["sensor_feats"], infer["image_feats"]# torch.Size([1, 23, 768]) torch.Size([1, 217, 768])
             cls_output = infer['cls_output']
          

@@ -269,6 +269,7 @@ class ViLTransformerSS(pl.LightningModule):
 
 
 class sensorViLTransformerSS(pl.LightningModule):
+
     def __init__(self, config,sensor_class_n,output_class_n):
         super().__init__()
         self.save_hyperparameters()

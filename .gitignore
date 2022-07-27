@@ -12,3 +12,7 @@ result
 weights/
 scripts/
 demos/
+test/
+my_runs/
+xiangguan/
+*.pt

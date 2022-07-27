@@ -1,7 +1,8 @@
+# ViLT模型配置文件
 from sacred import Experiment
-
+from sacred.observers import FileStorageObserver
 ex = Experiment("ViLT")
-
+ex.observers.append(FileStorageObserver.create("my_runs"))
 
 def _loss_names(d):
     ret = {
@@ -76,8 +77,8 @@ def config():
     per_gpu_batchsize = 0  # you should define this manually with per_gpu_batch_size=#
     num_gpus = 1
     num_nodes = 1
-    # load_path = "weights/vilt_200k_mlm_itm.ckpt"
-    load_path = "save_model_dict.pt"
+    load_path = "weights/vilt_200k_mlm_itm.ckpt"
+    # load_path = "save_model_dict.pt"
     num_workers = 8
     precision = 16
 
