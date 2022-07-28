@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from vilt.modules import heads, objectives, vilt_utils
 import vilt.modules.vision_transformer as vit
+import torch.nn.functional as F
 from typing import OrderedDict
 import os
 import pandas as pd
@@ -15,11 +16,15 @@ from vilt.transforms import pixelbert_transform
 from PIL import Image
 from torchvision import transforms, utils
 import functools
-
+from tqdm import tqdm
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import ConcatDataset
 from torch.utils.data.distributed import DistributedSampler
+import gc
+import torch.optim as optim
+from torch.optim import lr_scheduler
+from collections import defaultdict
 
 # %%
 np.random.randn(10,10)
@@ -37,6 +42,7 @@ class config:
     train_batch_size = 2
     valid_batch_size = 4
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    
 
     # Image setting
     train_transform_keys = ["pixelbert"]
@@ -69,7 +75,7 @@ class config:
     learning_rate = 1e-4
     weight_decay = 0.01
     decay_power = 1
-    max_epoch = 100
+    max_epoch = 3
     max_steps = 25000
     warmup_steps = 2500
     end_lr = 0
@@ -92,7 +98,7 @@ class config:
     num_nodes = 1
     load_path = "weights/vilt_200k_mlm_itm.ckpt"
     # load_path = "save_model_dict.pt"
-    num_workers = 8
+    num_workers = 1
     precision = 16
 
 config = vars(config)
@@ -143,12 +149,12 @@ class BuildDataset(torch.utils.data.Dataset):
         img_path  = self.img_paths[index]
         img = load_img(img_path)
         sensor = self.sensors[index]
+        sensor = torch.tensor(sensor).unsqueeze(0) #[1,n]
         if self.label:
             label = self.labels[index]
-
-            return torch.tensor(img), torch.tensor(sensor),torch.tensor(label)
+            return torch.tensor(img).to(torch.float), torch.tensor(sensor).to(torch.float),torch.tensor(label).to(torch.float)
         else:
-            return torch.tensor(img), torch.tensor(sensor)
+            return torch.tensor(img).to(torch.float), torch.tensor(sensor).to(torch.float)
 
 # %% [markdown]
 # # dataloader
@@ -170,11 +176,10 @@ print(label.shape)
 
 # %%
 
-class sensorViLTransformerSS(pl.LightningModule):
+class sensorViLTransformerSS(nn.Module):
 
     def __init__(self, config,sensor_class_n,output_class_n):
         super().__init__()
-        # self.save_hyperparameters()
         self.config = config
         self.sensor_linear = nn.Linear(sensor_class_n,config["hidden_size"]) 
 
@@ -186,9 +191,13 @@ class sensorViLTransformerSS(pl.LightningModule):
                 pretrained=False, config=self.config
             )
        
+        self.dense = nn.Linear(config["hidden_size"], config["hidden_size"])
+        self.activation = nn.Tanh()
+
 
         self.pooler = heads.Pooler(config["hidden_size"])
-        self.pooler.apply(objectives.init_weights)
+
+        # self.pooler.apply(objectives.init_weights)
         self.classifier = nn.Linear(config["hidden_size"],output_class_n)
         # ===================== Downstream ===================== #
         # if (
@@ -222,12 +231,13 @@ class sensorViLTransformerSS(pl.LightningModule):
         image_embeds=None,
         image_masks=None,
     ):
- 
-        sensor_embeds = self.sensor_linear(batch['sensor']) # input[1,1,12]  output[1,1,768]
+        sensor = batch['sensor'].to(config['device'])
+        sensor_embeds = self.sensor_linear(sensor) # input[1,1,12]  output[1,1,768]
         
 
         if image_embeds is None and image_masks is None:
-            img = batch["image"][0]
+            img = batch["image"].to(config['device'])
+       
             (
                 image_embeds, # torch.Size([1, 217, 768])
                 image_masks, # torch.Size([1, 217])
@@ -247,14 +257,17 @@ class sensorViLTransformerSS(pl.LightningModule):
         image_embeds = image_embeds + self.token_type_embeddings(
                 torch.full_like(image_masks, image_token_type_idx)
             )
-        sensor_masks = batch['sensor_masks'] # 序列数量
-
+        # sensor_masks = batch['sensor_masks'] # 序列数量
+        batch_size = img.shape[0]
+        sensor_masks = torch.ones(batch_size,1).to(config['device']) # 序列数量
+        image_masks = image_masks.to(config['device'])
         co_embeds = torch.cat([sensor_embeds, image_embeds], dim=1) # torch.Size([1, 240, 768]) ->240=217+23
         co_masks = torch.cat([sensor_masks, image_masks], dim=1) # torch.Size([1, 240])
 
-        x = co_embeds
+        x = co_embeds.to(config['device'])
 
         for i, blk in enumerate(self.transformer.blocks):
+            blk = blk.to(config['device'])
             x, _attn = blk(x, mask=co_masks)
 
         x = self.transformer.norm(x) # torch.Size([1, 240, 768])
@@ -263,7 +276,12 @@ class sensorViLTransformerSS(pl.LightningModule):
             x[:, sensor_embeds.shape[1] :], # 前面图片输出217维
         )
         cls_feats = self.pooler(x) # torch.Size([1, 768])
-        cls_output = nn.Softmax(self.classifier(cls_feats))
+        # cls_feats = self.dense(x)
+        # cls_feats = self.activation(cls_feats)
+        cls_output = self.classifier(cls_feats)
+        m = nn.Softmax(dim=1)
+        cls_output = m(cls_output)
+
         
         ret = {
            "sensor_feats":sensor_feats,
@@ -286,88 +304,139 @@ class sensorViLTransformerSS(pl.LightningModule):
         ret.update(self.infer(batch))
         return ret
 
-    def training_step(self, batch, batch_idx):
-        # vilt_utils.set_task(self)
-        output = self(batch)
-        loss = self.loss(output['cls_output'], x)
-
-        return loss
-
-    def training_epoch_end(self, outs):
-        # vilt_utils.epoch_wrapup(self)
-        pass
-
-    def validation_step(self, batch, batch_idx):
-        # vilt_utils.set_task(self)
-        output = self(batch)
-
-    def validation_epoch_end(self, outs):
-        # vilt_utils.epoch_wrapup(self)
-        pass
-    def test_step(self, batch, batch_idx):
-        # vilt_utils.set_task(self)
-        # output = self(batch)
-        # ret = dict()
-        # return ret
-        pass
-
-    def test_epoch_end(self, outs):
-        model_name = self.config["load_path"].split("/")[-1][:-5]
-
-        # if self.config["loss_names"]["vqa"] > 0:
-        #     objectives.vqa_test_wrapup(outs, model_name)
-        # vilt_utils.epoch_wrapup(self)
-
-
-    def configure_optimizers(self):
-        """定义优化器
-        """
-        # return vilt_utils.set_schedule(self)
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
-        return optimizer
-
 
 # %% [markdown]
 # ## model build
 
 # %%
-model = sensorViLTransformerSS(config,sensor_class_n= 12,output_class_n = 9)
+model = sensorViLTransformerSS(config,sensor_class_n= 10,output_class_n = 1)
+model.to(config['device'])
+print(config['device'])
+
+# %% [markdown]
+# # 损失函数
+
+# %%
+criterion = F.mse_loss #均方误差损失函数
+
+# %% [markdown]
+# # train one epoch
+
+# %%
+
+
+
+def train_one_epoch(model, optimizer, scheduler, dataloader, device, epoch):
+    model.train()
+    dataset_size = 0
+    running_loss = 0.0
+    
+    pbar = tqdm(enumerate(dataloader), total=len(dataloader), desc='Train ')
+    for step, (img, sensor,label) in pbar:         
+        # img = img.to(device, dtype=torch.float)
+        # sensor  = sensor.to(device, dtype=torch.float)
+        # label  = label.to(device, dtype=torch.float)
+        batch_size = img.size(0)
+        
+        batch = {"image":img,"sensor":sensor}
+
+        y_pred = model(batch)
+        label = label.to(config['device'])
+        loss = criterion(y_pred['cls_output'], label)
+        
+        #一坨优化
+        optimizer.zero_grad()#每一次反向传播之前都要归零梯度
+        loss.backward()      #反向传播
+        optimizer.step()     #固定写法
+        scheduler.step()
+     
+        running_loss += (loss.item() * batch_size)
+        dataset_size += batch_size
+        
+        mem = torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0
+        current_lr = optimizer.param_groups[0]['lr']
+        pbar.set_postfix(train_loss=f'{epoch_loss:0.4f}',
+                        lr=f'{current_lr:0.5f}',
+                        gpu_mem=f'{mem:0.2f} GB')
+
+    epoch_loss = running_loss / dataset_size
+        
+        
+    torch.cuda.empty_cache()
+    gc.collect()
+    
+    return epoch_loss
 
 # %% [markdown]
 # # train
 
 # %%
-trainer = pl.Trainer(
-    gpus=config["num_gpus"],
-    # num_nodes=config["num_nodes"], # number of GPU nodes for distributed training.
-    # precision=config["precision"], #  Full precision (32), half precision (16). Can be used on CPU, GPU or TPUs.
-    # accelerator="ddp",
-    # benchmark=True, # If true enables cudnn.benchmark.
-    # deterministic=True,
-    max_epochs=config["max_epoch"],
-    # max_steps=config["max_steps"],
-    # callbacks=callbacks, # Add a list of callbacks.
-    # logger=logger,
-    # prepare_data_per_node=False,
-    # replace_sampler_ddp=False,
-    # accumulate_grad_batches=grad_steps,
-    # log_every_n_steps=10,
-    # flush_logs_every_n_steps=10,
-    # resume_from_checkpoint=config["resume_from"],
-    # weights_summary="top",
-    # fast_dev_run=config["fast_dev_run"],
-    # val_check_interval=config["val_check_interval"],
+import gc
+def run_training(model, optimizer, scheduler, device, num_epochs):
+    history = defaultdict(list)
+    if torch.cuda.is_available():
+        print("cuda: {}\n".format(torch.cuda.get_device_name()))
     
-)
+    for epoch in range(1, num_epochs + 1): 
+        gc.collect()
+        print(f'Epoch {epoch}/{num_epochs}', end='')
+        train_loss = train_one_epoch(model, optimizer, scheduler, 
+                                           dataloader=train_loader, 
+                                           device=device, epoch=epoch)
+        
+        # val_loss, val_scores = valid_one_epoch(model, valid_loader, 
+                                                #  device=CFG.device, 
+                                                #  epoch=epoch)
+        # val_dice, val_jaccard = val_scores
+    
+        history['Train Loss'].append(train_loss)
+        # history['Valid Loss'].append(val_loss)
+        
+
+        
+        # deep copy the model
+        # if val_dice >= best_dice:
+            # print(f"{c_}Valid Score Improved ({best_dice:0.4f} ---> {val_dice:0.4f})")
+            # best_dice    = val_dice
+            # best_jaccard = val_jaccard
+            # best_epoch   = epoch
+            # run.summary["Best Dice"]    = best_dice
+            # run.summary["Best Jaccard"] = best_jaccard
+            # run.summary["Best Epoch"]   = best_epoch
+            # best_model_wts = copy.deepcopy(model.state_dict())
+            # PATH = os.path.join(CFG.model_output_path, f"best_epoch-{fold:02d}.bin")
+            # torch.save(model.state_dict(), PATH)
+            # Save a model file from the current directory
+            # wandb.save(PATH)
+            # print(f"Model Saved{sr_} to path:",PATH)
+            
+        # last_model_wts = copy.deepcopy(model.state_dict())
+        # PATH = os.path.join(CFG.model_output_path,f"last_epoch-{fold:02d}.bin")
+        # torch.save(model.state_dict(), PATH)
+
+
+    
+    # load best model weights
+    # model.load_state_dict(best_model_wts)
+    
+    return model, history
+
+# %% [markdown]
+# optimizer
 
 # %%
-# if not _config["test_only"]:
-trainer.fit(model,train_dataloader=train_loader,val_dataloaders=valid_loader)
-# else:
-    # trainer.test(model, datamodule=dm)
+optimizer = optim.Adam(model.parameters(), lr=0.02, weight_decay=0.0001)
+scheduler = lr_scheduler.CosineAnnealingLR(optimizer,T_max=1000, 
+                                                   eta_min=0.0001)
+
+
+# %% [markdown]
+# run train
 
 # %%
-
+model, history = run_training(model, optimizer, scheduler,
+                                device=config['device'],
+                                num_epochs=config['max_epoch'])
 
 # %% [markdown]
 # # infer
@@ -375,7 +444,6 @@ trainer.fit(model,train_dataloader=train_loader,val_dataloaders=valid_loader)
 # %%
 # torch.save(model.state_dict(), 'embedding_test_dict.pt')
 print(model)
-model.setup("test")
 model.eval()
 device = config["device"]
 model.to(device)
@@ -392,8 +460,8 @@ def infer(img_filename, sensor):
         print("图片加载失败！")
         raise
 
-    batch = {"text": [""], "image": [None]}
-    batch["image"][0] = img
+    batch = dict()
+    batch["image"] = img
 
     batch['sensor_masks'] = torch.ones(1,1).to(device)
     with torch.no_grad():
@@ -410,18 +478,17 @@ def infer(img_filename, sensor):
 examples=[
         [
             "6212487_1cca7f3f_1024x1024.jpg",
-            "a display of flowers growing out and over the [MASK] [MASK] in front of [MASK] on a [MASK] [MASK].",
-            0,
         ],
         [
             "6212487_1cca7f3f_1024x1024.jpg",
-            "a a a display of flowers growing out and over the retaining wall in front of cottages on a cloudy day",
-            4,
+        ],
+        [
+            "6212487_1cca7f3f_1024x1024.jpg",
         ],
     ],
 
 n = 1
-sensor = torch.randn(1,1,12)
+sensor = torch.randn(1,1,10)
 out = infer(examples[0][n][0],sensor)
 # print("out:",out,"000\n")
 # print("out0.shape:",out[0].shape)
