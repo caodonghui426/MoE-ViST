@@ -2,10 +2,9 @@
 # # import
 
 # %%
-import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from vilt.modules import heads, objectives, vilt_utils
+from vilt.modules import heads, objectives
 import vilt.modules.vision_transformer as vit
 import torch.nn.functional as F
 from typing import OrderedDict
@@ -14,13 +13,9 @@ import pandas as pd
 import numpy as np
 from vilt.transforms import pixelbert_transform
 from PIL import Image
-from torchvision import transforms, utils
-import functools
+from torchvision import transforms
 from tqdm import tqdm
-from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
-from torch.utils.data.dataset import ConcatDataset
-from torch.utils.data.distributed import DistributedSampler
 import gc
 import torch.optim as optim
 from torch.optim import lr_scheduler
@@ -106,11 +101,43 @@ config = dict(config)
 config
 
 # %%
-
+def setup_seed(seed=0):
+    import torch
+    import os
+    import numpy as np
+    import random
+    torch.manual_seed(seed)  # 为CPU设置随机种子
+    np.random.seed(seed)  # Numpy module.
+    random.seed(seed)  # Python random module.
+    if torch.cuda.is_available():
+        # torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.cuda.manual_seed(seed)  # 为当前GPU设置随机种子
+        torch.cuda.manual_seed_all(seed)  # 为所有GPU设置随机种子
+        #os.environ['PYTHONHASHSEED'] = str(seed)
+setup_seed(seed=666)
 
 # %%
-df = pd.DataFrame({"sensor":[np.random.randn(10)]*10,"image_path":"assets/vilt.png","label":np.random.randint(1,10+1)})
-df
+test_df = pd.DataFrame({
+    "a":np.random.randn(500),
+    "b":np.random.randn(500),
+    "c":np.random.randn(500),
+    "d":np.random.randn(500),
+    "image_path":"assets/vilt.png",
+    
+})
+
+# %%
+test_df['label'] = test_df.a + 2*test_df.b + 3*test_df.c + 4*test_df.d
+test_df['sensor'] = test_df[['a','b','c','d','a','b','c','d','a','b']].values.tolist()
+
+# %%
+test_df.head()
+test_df.to_csv("test_df.csv")
+
+# %%
+# df = pd.DataFrame({"sensor":[np.random.randn(10)]*10,"image_path":"assets/vilt.png","label":np.random.randint(1,10+1)})
+df=test_df
 
 # %% [markdown]
 # # dataset
@@ -279,8 +306,8 @@ class sensorViLTransformerSS(nn.Module):
         # cls_feats = self.dense(x)
         # cls_feats = self.activation(cls_feats)
         cls_output = self.classifier(cls_feats)
-        m = nn.Softmax(dim=1)
-        cls_output = m(cls_output)
+        # m = nn.Softmax(dim=1)
+        # cls_output = m(cls_output)
 
         
         ret = {
@@ -341,7 +368,7 @@ def train_one_epoch(model, optimizer, scheduler, dataloader, device, epoch):
         batch = {"image":img,"sensor":sensor}
 
         y_pred = model(batch)
-        label = label.to(config['device'])
+        label = label.to(config['device']).unsqueeze(1)
         loss = criterion(y_pred['cls_output'], label)
         
         #一坨优化
@@ -352,14 +379,14 @@ def train_one_epoch(model, optimizer, scheduler, dataloader, device, epoch):
      
         running_loss += (loss.item() * batch_size)
         dataset_size += batch_size
-        
+        epoch_loss = running_loss / dataset_size
         mem = torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0
         current_lr = optimizer.param_groups[0]['lr']
         pbar.set_postfix(train_loss=f'{epoch_loss:0.4f}',
                         lr=f'{current_lr:0.5f}',
                         gpu_mem=f'{mem:0.2f} GB')
 
-    epoch_loss = running_loss / dataset_size
+    
         
         
     torch.cuda.empty_cache()
@@ -498,5 +525,8 @@ out = infer(examples[0][n][0],sensor)
 
 # %%
 out
+
+# %%
+out[0].cpu().numpy()[0][0]
 
 

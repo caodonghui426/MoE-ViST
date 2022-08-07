@@ -16,3 +16,4 @@ test/
 my_runs/
 xiangguan/
 *.pt
+*log
