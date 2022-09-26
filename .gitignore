@@ -17,3 +17,7 @@ my_runs/
 xiangguan/
 *.pt
 *log
+wandb/
+test/
+test*
+nohup.out
