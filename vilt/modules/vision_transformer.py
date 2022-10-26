@@ -557,7 +557,7 @@ class VisionTransformer(nn.Module):
     def visual_embed(self, _x, max_image_len=200, mask_it=False):
         _, _, ph, pw = self.patch_embed.proj.weight.shape
 
-        x = self.patch_embed(_x)
+        x = self.patch_embed(_x) # torch.Size([32, 3, 384, 384])
         x_mask = (_x.sum(dim=1) != 0).float()[:, None, :, :]
         x_mask = F.interpolate(x_mask, size=(x.shape[2], x.shape[3])).long()
         x_h = x_mask[:, 0].sum(dim=1)[:, 0]
@@ -583,7 +583,7 @@ class VisionTransformer(nn.Module):
         )
 
         pos_embed = pos_embed.flatten(2).transpose(1, 2)
-        x = x.flatten(2).transpose(1, 2)
+        x = x.flatten(2).transpose(1, 2) # torch.Size([32, 144, 768])
         patch_index = (
             torch.stack(
                 torch.meshgrid(

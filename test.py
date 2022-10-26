@@ -40,9 +40,10 @@ class config:
     train_batch_size = 32
     valid_batch_size = 4
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # root_path = r'E:\\Download\\xiangguan' # 存放数据的根目录
-    root_path = r'/home/junsheng/data/xiangguan' # 存放数据的根目录
     n_fold = 5
+
+    # wandb 
+    wandb_name = "vilt|大豆|290图片加传感器"
     
 
     # Image setting
@@ -142,11 +143,13 @@ except:
 # # 数据
 
 # %%
-df_tianhang = pd.read_csv("/home/junsheng/ViLT/data/290-tianhang.csv")
-df_tianhang['image_path'] = df_tianhang['pic_key'].map(lambda x:os.path.join('/home/junsheng/data/tianhang_rice',x.split('/')[-1]))
+df_tianhang = pd.read_csv("/home/junsheng/ViLT/data/290-tianhang-soybean.csv")
+df_tianhang['image_path'] = df_tianhang['pic_key'].map(lambda x:os.path.join('/home/junsheng/data/tianhang_soybean',x.split('/')[-1]))
 df_tianhang['label'] = df_tianhang['LAI']
 df_tianhang = df_tianhang.dropna()
 df_tianhang = df_tianhang.reset_index()
+print(df_tianhang.shape)
+df_tianhang.to_csv("test.csv",index=False)
 df_tianhang.head()
 
 # %% [markdown]
@@ -156,10 +159,10 @@ df_tianhang.head()
 # 检查图片下载的全不全
 pic = df_tianhang.image_path.map(lambda x:x.split('/')[-1]).unique()
 print(len(pic))
-file_ls = os.listdir("/home/junsheng/data/tianhang_rice")
+file_ls = os.listdir("/home/junsheng/data/tianhang_soybean")
 print(len(file_ls))
 ret = list(set(pic) ^ set(file_ls))
-print(ret) #差集
+print(len(ret)) #差集
 # assert len(pic)==len(file_ls),"请检查下载的图片，缺了{}个".format(len(pic)-len(file_ls))
 
 
@@ -168,9 +171,6 @@ print(ret) #差集
 
 # %%
 list(df_tianhang)
-
-# %%
-
 
 # %%
 number_title = []
@@ -191,8 +191,12 @@ print(number_title)
 print(recorder)
 
 # %%
+df_tianhang['stemp4'].dtype
+
+# %%
 # xiangguan_sensor = ['temperature', 'humidity', 'illuminance', 'soil_temperature', 'soil_humidity', 'pressure', 'wind_speed', 'photosynthetic', 'sun_exposure_time', 'COz', 'soil_ph']
 tianhang_sensor = ['co2', 'stemp', 'stemp2', 'stemp3', 'stemp4', 'stemp5', 'shumi', 'shumi2', 'shumi3', 'shumi4', 'shumi5', 'humi', 'pm10', 'pm25', 'press', 'solar', 'temp', 'wind_d', 'wind_sp']
+# tianhang_sensor = ['co2', 'stemp', 'stemp2', 'stemp3', 'stemp5', 'shumi', 'shumi2', 'shumi3', 'shumi5', 'humi', 'pm10', 'pm25', 'press', 'solar', 'temp', 'wind_d', 'wind_sp']
 
 df_tianhang['sensor'] = df_tianhang[tianhang_sensor].values.tolist()
 print("input dim:",len(tianhang_sensor))
@@ -202,6 +206,9 @@ df=df_tianhang
 if config.debug:
     df = df[:100]
 df.shape
+
+# %%
+df_tianhang.to_csv("test.csv",index=False)
 
 # %% [markdown]
 # create folds
@@ -296,6 +303,9 @@ print(label.shape)
 # %% [markdown]
 # # model
 
+# %% [markdown]
+# sensorViLTransformerSS
+
 # %%
 
 class sensorViLTransformerSS(nn.Module):
@@ -364,11 +374,11 @@ class sensorViLTransformerSS(nn.Module):
         co_embeds = torch.cat([sensor_embeds, image_embeds], dim=1) # torch.Size([1, 240, 768]) ->240=217+23
         co_masks = torch.cat([sensor_masks, image_masks], dim=1) # torch.Size([1, 240])
 
-        x = co_embeds.to(config.device)
+        x = co_embeds.to(config.device) # torch.Size([1, 211, 768])
 
-        for i, blk in enumerate(self.transformer.blocks):
+        for i, blk in enumerate(self.transformer.blocks): 
             blk = blk.to(config.device)
-            x, _attn = blk(x, mask=co_masks)
+            x, _attn = blk(x, mask=co_masks) # co_masks = torch.Size([1, 211])
 
         x = self.transformer.norm(x) # torch.Size([1, 240, 768])
         sensor_feats, image_feats = ( # torch.Size([1, 23, 768]),torch.Size([1, 217, 768])
@@ -407,14 +417,144 @@ class sensorViLTransformerSS(nn.Module):
 
 
 # %% [markdown]
+# sensorOnlyViLTransformerSS
+
+# %%
+
+class sensorOnlyViLTransformerSS(nn.Module):
+
+    def __init__(self,sensor_class_n,output_class_n):
+        super().__init__()
+        self.sensor_linear = nn.Linear(sensor_class_n,config.hidden_size) 
+
+        self.token_type_embeddings = nn.Embedding(2, config.hidden_size)
+        self.token_type_embeddings.apply(objectives.init_weights)
+
+        self.transformer = getattr(vit, config.vit)(
+                pretrained=True, config=vars(config)
+            )
+       
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.activation = nn.Tanh()
+
+
+        self.pooler = heads.Pooler(config.hidden_size)
+
+        # self.pooler.apply(objectives.init_weights)
+        self.classifier = nn.Linear(config.hidden_size,output_class_n)
+
+        hs = config.hidden_size
+
+
+    def infer(
+        self,
+        batch,
+        # mask_image=False,
+        # image_token_type_idx=1,
+        # image_embeds=None,
+        # image_masks=None,
+    ):
+        sensor = batch['sensor'].to(config.device)
+        sensor_embeds = self.sensor_linear(sensor) # input[1,1,12]  output[1,1,768]
+        
+
+        # if image_embeds is None and image_masks is None:
+        #     img = batch["image"].to(config.device)
+       
+        #     (
+        #         image_embeds, # torch.Size([1, 217, 768])
+        #         image_masks, # torch.Size([1, 217])
+        #         patch_index,
+        #         image_labels,
+        #     ) = self.transformer.visual_embed(
+        #         img,
+        #         max_image_len=config.max_image_len,
+        #         mask_it=mask_image,
+        #     )
+        # else:
+        #     patch_index, image_labels = (
+        #         None,
+        #         None,
+        #     )
+        # 用embedding对数据输入预处理，降低维度
+        # image_embeds = image_embeds + self.token_type_embeddings(
+        #         torch.full_like(image_masks, image_token_type_idx)
+        #     )
+        # sensor_masks = batch['sensor_masks'] # 序列数量
+        # batch_size = img.shape[0]
+        sensor_masks = torch.ones(sensor_embeds.shape[1],1).to(config.device) # 序列数量
+        # image_masks = image_masks.to(config.device)
+        # co_embeds = torch.cat([sensor_embeds, image_embeds], dim=1) # torch.Size([1, 240, 768]) ->240=217+23
+        # co_masks = torch.cat([sensor_masks, image_masks], dim=1) # torch.Size([1, 240])
+        co_embeds = sensor_embeds
+        co_masks = sensor_masks
+
+        x = co_embeds.to(config.device) # torch.Size([1, 1, 768])
+
+        for i, blk in enumerate(self.transformer.blocks):
+            blk = blk.to(config.device)
+            x, _attn = blk(x, mask=co_masks)
+
+        x = self.transformer.norm(x) # torch.Size([1, 240, 768])
+        # sensor_feats, image_feats = ( # torch.Size([1, 23, 768]),torch.Size([1, 217, 768])
+        #     x[:, : sensor_embeds.shape[1]], # 后面字数输出23维
+        #     x[:, sensor_embeds.shape[1] :], # 前面图片输出217维
+        # )
+        cls_feats = self.pooler(x) # torch.Size([1, 768])
+        # cls_feats = self.dense(x)
+        # cls_feats = self.activation(cls_feats)
+        cls_output = self.classifier(cls_feats)
+        # m = nn.Softmax(dim=1)
+        
+        m = nn.Sigmoid()
+        cls_output = m(cls_output)
+        
+        ret = {
+        #    "sensor_feats":sensor_feats,
+            # "image_feats": image_feats,
+            "cls_feats": cls_feats, # class features
+            "raw_cls_feats": x[:, 0],
+            # "image_labels": image_labels,
+            # "image_masks": image_masks,
+           
+            # "patch_index": patch_index,
+
+            "cls_output":cls_output,
+        }
+
+        return ret
+
+    def forward(self, batch):
+        ret = dict()
+        
+        ret.update(self.infer(batch))
+        return ret
+
+
+# %% [markdown]
 # ## model build
 
 # %%
+# model = sensorOnlyViLTransformerSS(sensor_class_n= config.senser_input_num,output_class_n = 1)
 model = sensorViLTransformerSS(sensor_class_n= config.senser_input_num,output_class_n = 1)
 model.to(config.device)
 print(config.device)
 for i,m in enumerate(model.modules()):
     print(i,m)
+
+# %% [markdown]
+# test
+
+# %%
+
+# sensor = torch.rand(config.senser_input_num)
+# # sensor = torch.ones(config.senser_input_num)
+# print(sensor)
+# sensor =  torch.tensor(sensor).unsqueeze(0).unsqueeze(0) # torch.Size([1, 1, 3])
+# batch = {}
+# batch['sensor'] = sensor
+# batch['image'] = "/home/junsheng/data/xiangguan/pic/xiangguanD4-2021-05-24-10-00-25.jpeg"
+# model(batch)
 
 # %% [markdown]
 # # 损失函数
@@ -524,7 +664,7 @@ def run_training(model, optimizer, scheduler, device, num_epochs):
                     # config={k: v for k, v in dict(config).items() if '__' not in k},
                     anonymous=anonymous,
                     # name=f"vilt|fold-{config.valid_fold}",
-                    name=f"vilt|",
+                    name=config.wandb_name,
                     # group=config.wandb_group,
                     )
     wandb.watch(model, log_freq=100)
@@ -556,6 +696,8 @@ def run_training(model, optimizer, scheduler, device, num_epochs):
             run.summary["Best Epoch"] = epoch
             torch.save(model.state_dict(), model_file_path)
             print("model save to", model_file_path)
+            
+    os.system("cp /home/junsheng/ViLT/my_vilt_tianhang_soybean.ipynb {}".format(wandb.run.dir))
     run.finish()
     return model, history
 
@@ -589,7 +731,7 @@ for (img,sensor,label) in valid_loader:
 # torch.save(model.state_dict(), 'embedding_test_dict.pt')
 # print(model)
 
-model.load_state_dict(torch.load("/home/junsheng/ViLT/wandb/offline-run-20220811_120519-nzfb1xoz/files/epoch-best.bin"))
+# model.load_state_dict(torch.load("/home/junsheng/ViLT/wandb/offline-run-20220811_120519-nzfb1xoz/files/epoch-best.bin"))
 model.eval()
 device = config.device
 model.to(device)
