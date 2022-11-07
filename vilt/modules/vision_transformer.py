@@ -321,7 +321,8 @@ class Attention(nn.Module):
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
         if mask is not None:
-            mask = mask.bool()
+            # mask = mask.bool() # device:cuda,
+            mask = mask.type(torch.bool) # device:cuda,
             attn = attn.masked_fill(~mask[:, None, None, :], float("-inf"))
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)

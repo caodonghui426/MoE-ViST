@@ -1,3 +1,4 @@
+from collections import namedtuple
 import torch
 import os
 from PIL import Image
@@ -22,7 +23,8 @@ class config:
     batch_size = 4096  # this is a desired batch size; pl trainer will accumulate gradients when per step batch is smaller.
     train_batch_size = 32
     valid_batch_size = 4
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
     # root_path = r'E:\\Download\\xiangguan' # 存放数据的根目录
     root_path = r'/home/junsheng/data/xiangguan' # 存放数据的根目录
     n_fold = 5
@@ -127,15 +129,15 @@ class sensorViLTransformerSS(nn.Module):
         image_masks=None,
     ):
         sensor = batch['sensor'].to(config.device)
-        sensor_embeds = self.sensor_linear(sensor) # input[1,1,12]  output[1,1,768]
+        sensor_embeds = self.sensor_linear(sensor) # input[1,1,19]  output[1,1,768]
         
 
         if image_embeds is None and image_masks is None:
             img = batch["image"].to(config.device)
        
             (
-                image_embeds, # torch.Size([1, 217, 768])
-                image_masks, # torch.Size([1, 217])
+                image_embeds, # torch.Size([1, 210, 768])
+                image_masks, # torch.Size([1, 210])
                 patch_index,
                 image_labels,
             ) = self.transformer.visual_embed(
@@ -156,8 +158,8 @@ class sensorViLTransformerSS(nn.Module):
         batch_size = img.shape[0]
         sensor_masks = torch.ones(batch_size,1).to(config.device) # 序列数量
         image_masks = image_masks.to(config.device)
-        co_embeds = torch.cat([sensor_embeds, image_embeds], dim=1) # torch.Size([1, 240, 768]) ->240=217+23
-        co_masks = torch.cat([sensor_masks, image_masks], dim=1) # torch.Size([1, 240])
+        co_embeds = torch.cat([sensor_embeds, image_embeds], dim=1) # torch.Size([1, 211, 768]) ->211=210+1
+        co_masks = torch.cat([sensor_masks, image_masks], dim=1) # torch.Size([1, 211])
 
         x = co_embeds.to(config.device) # torch.Size([1, 211, 768])
 
@@ -165,8 +167,8 @@ class sensorViLTransformerSS(nn.Module):
             blk = blk.to(config.device)
             x, _attn = blk(x, mask=co_masks) # co_masks = torch.Size([1, 211])
 
-        x = self.transformer.norm(x) # torch.Size([1, 240, 768])
-        sensor_feats, image_feats = ( # torch.Size([1, 23, 768]),torch.Size([1, 217, 768])
+        x = self.transformer.norm(x) # torch.Size([1, 211, 768])
+        sensor_feats, image_feats = ( # torch.Size([1, 1, 768]),torch.Size([1, 210, 768])
             x[:, : sensor_embeds.shape[1]], # 后面字数输出23维
             x[:, sensor_embeds.shape[1] :], # 前面图片输出217维
         )
@@ -178,73 +180,92 @@ class sensorViLTransformerSS(nn.Module):
         
         m = nn.Sigmoid()
         cls_output = m(cls_output)
-        
-        ret = {
-           "sensor_feats":sensor_feats,
-            "image_feats": image_feats,
-            "cls_feats": cls_feats, # class features
-            "raw_cls_feats": x[:, 0],
-            "image_labels": image_labels,
-            "image_masks": image_masks,
+        # ret = namedtuple("cls_output",cls_output.item())
+        # ret = {
+        # #    "sensor_feats":sensor_feats,
+        # #     "image_feats": image_feats,
+        # #     "cls_feats": cls_feats, # class features
+        # #     "raw_cls_feats": x[:, 0],
+        # #     "image_labels": image_labels,
+        # #     "image_masks": image_masks,
            
-            "patch_index": patch_index,
+        # #     "patch_index": patch_index,
 
-            "cls_output":cls_output,
-        }
+        #     "cls_output":cls_output,
+        # }
 
-        return ret
+        return cls_output
 
     def forward(self, batch):
-        ret = dict()
-        
-        ret.update(self.infer(batch))
-        return ret
+        return self.infer(batch)
 
 if config.debug:
     config.max_epoch = 5
 model = sensorViLTransformerSS(sensor_class_n= config.senser_input_num,output_class_n = 1)
-# model = torch.load("test_rice_model.pth")
-model.eval()
-device = config.device
-model.to(device)
-def infer(img_filename, sensor):
-    try:
-        img_path = os.path.join('pictures',img_filename)
-        image = Image.open(img_path).convert("RGB")
-        img = pixelbert_transform(size=384)(image) # 将图像数据归一化torch.Size([3, 384, 576])
-        img = torch.tensor(img)
-        img = torch.unsqueeze(img, 0) # torch.Size([1, 3, 384, 576])
-        img = img.to(device)
-        print("img.shape:",img.shape)
-    except :
-        print("图片加载失败！")
-        raise
+def create_example():
+    device = config.device
+    sensor = torch.rand(config.senser_input_num)
+    sensor =  torch.tensor(sensor).unsqueeze(0).unsqueeze(0) # torch.Size([1, 1, 3])
 
-    batch = dict()
+    img_path = os.path.join('pictures',"/home/junsheng/data/xiangguan/pic/xiangguanD4-2021-05-24-10-00-25.jpeg")
+    image = Image.open(img_path).convert("RGB")
+    img = pixelbert_transform(size=384)(image) # 将图像数据归一化torch.Size([3, 384, 576])
+    img = torch.tensor(img)
+    img = torch.unsqueeze(img, 0) # torch.Size([1, 3, 384, 576])
+    img = img.to(device)
+    batch = {}
     batch["image"] = img
+    batch['sensor'] = sensor.to(device) 
 
     batch['sensor_masks'] = torch.ones(1,1).to(device)
-    with torch.no_grad():
-        batch['sensor'] = sensor.to(device)       
-        infer = model(batch)
-        cls_output = infer['cls_output']
-        
-
-    return [cls_output]
+    return batch
 
 
+model = torch.jit.trace(model,create_example(),check_trace =False)
+model.save("test_rice_model.torchscript")
+if 1==0:
+    # model = torch.load("test_rice_model.pth")
+    model.eval()
+    device = config.device
+    model.to(device)
+    def infer(img_filename, sensor):
+        try:
+            img_path = os.path.join('pictures',img_filename)
+            image = Image.open(img_path).convert("RGB")
+            img = pixelbert_transform(size=384)(image) # 将图像数据归一化torch.Size([3, 384, 576])
+            img = torch.tensor(img)
+            img = torch.unsqueeze(img, 0) # torch.Size([1, 3, 384, 576])
+            img = img.to(device)
+            print("img.shape:",img.shape)
+        except :
+            print("图片加载失败！")
+            raise
 
-examples=[
-            "/home/junsheng/data/xiangguan/pic/xiangguanD4-2021-05-24-10-00-25.jpeg", #0
+        batch = dict()
+        batch["image"] = img
+
+        batch['sensor_masks'] = torch.ones(1,1).to(device)
+        with torch.no_grad():
+            batch['sensor'] = sensor.to(device)       
+            infer = model(batch)
+            cls_output = infer['cls_output']
             
-            "/home/junsheng/data/xiangguan/pic/xiangguanD4-2021-07-18-04-22-30-preset-18.jpeg", # 3
-    ]
+
+        return [cls_output]
 
 
 
-n = 1
-sensor = torch.rand(config.senser_input_num)
-sensor =  torch.tensor(sensor).unsqueeze(0).unsqueeze(0) # torch.Size([1, 1, 3])
-out = infer(examples[0],sensor)
-print("output:",out)
+    examples=[
+                "/home/junsheng/data/xiangguan/pic/xiangguanD4-2021-05-24-10-00-25.jpeg", #0
+                
+                "/home/junsheng/data/xiangguan/pic/xiangguanD4-2021-07-18-04-22-30-preset-18.jpeg", # 3
+        ]
+
+
+
+    n = 1
+    sensor = torch.rand(config.senser_input_num)
+    sensor =  torch.tensor(sensor).unsqueeze(0).unsqueeze(0) # torch.Size([1, 1, 3])
+    out = infer(examples[0],sensor)
+    print("output:",out)
 
