@@ -20,4 +20,4 @@ xiangguan/
 wandb/
 test/
 test*
-nohup.out
+nohup*
