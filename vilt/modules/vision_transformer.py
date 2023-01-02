@@ -288,7 +288,7 @@ class Mlp(nn.Module):
 class Attention(nn.Module):
     def __init__(
         self,
-        dim,
+        dim, # embedding dimension ，mine is 768
         num_heads=8,
         qkv_bias=False,
         qk_scale=None,
@@ -297,7 +297,7 @@ class Attention(nn.Module):
     ):
         super().__init__()
         self.num_heads = num_heads
-        head_dim = dim // num_heads
+        head_dim = dim // num_heads # 768/12=32
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = qk_scale or head_dim ** -0.5
 
@@ -307,31 +307,81 @@ class Attention(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x, mask=None):
-        B, N, C = x.shape
-        qkv = (
+        B, N, C = x.shape # torch.Size([2, 146, 768])
+        qkv = ( # torch.Size([3, 2, 12, 146, 64])
             self.qkv(x)
             .reshape(B, N, 3, self.num_heads, C // self.num_heads)
             .permute(2, 0, 3, 1, 4)
         )
         q, k, v = (
-            qkv[0],
-            qkv[1],
-            qkv[2],
+            qkv[0], # torch.Size([2, 12, 146, 64])
+            qkv[1], # torch.Size([2, 12, 146, 64])
+            qkv[2], # torch.Size([2, 12, 146, 64])
         )  # make torchscript happy (cannot use tensor as tuple)
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale
+        attn = (q @ k.transpose(-2, -1)) * self.scale # torch.Size([2, 12, 146, 146])
         if mask is not None:
             # mask = mask.bool() # device:cuda,
             mask = mask.type(torch.bool) # device:cuda,
             attn = attn.masked_fill(~mask[:, None, None, :], float("-inf"))
-        attn = attn.softmax(dim=-1)
+        attn = attn.softmax(dim=-1) # torch.Size([2, 12, 146, 146])
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C) 
+        #v:torch.Size([2, 12, 146, 64]) 
+        #x:torch.Size([2, 146, 768])
         x = self.proj(x)
         x = self.proj_drop(x)
         return x, attn
+        
+class AttentionforviST(nn.Module):
+    def __init__(
+        self,
+        dim, # embedding dimension ，mine is 768
+        num_heads=8,
+        qkv_bias=False,
+        qk_scale=None,
+        attn_drop=0.0,
+        proj_drop=0.0,
+    ):
+        super().__init__()
+        self.num_heads = num_heads
+        head_dim = dim // num_heads # 768/12=32
+        # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
+        self.scale = qk_scale or head_dim ** -0.5
 
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+    def forward(self, x, mask=None):
+        B, N, C = x.shape # torch.Size([2, 146, 768])
+        qkv = ( # torch.Size([3, 2, 12, 146, 64])
+            self.qkv(x)
+            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
+            .permute(2, 0, 3, 1, 4)
+        )
+        q, k, v = (
+            qkv[0], # torch.Size([2, 12, 146, 64])
+            qkv[1], # torch.Size([2, 12, 146, 64])
+            qkv[2], # torch.Size([2, 12, 146, 64])
+        )  # make torchscript happy (cannot use tensor as tuple)
+
+        attn = (q @ k.transpose(-2, -1)) * self.scale # torch.Size([2, 12, 146, 146])
+        if mask is not None:
+            # mask = mask.bool() # device:cuda,
+            mask = mask.type(torch.bool) # device:cuda,
+            attn = attn.masked_fill(~mask[:, None, None, :], float("-inf"))
+        attn = attn.softmax(dim=-1) # torch.Size([2, 12, 146, 146])
+        attn = self.attn_drop(attn)
+
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C) 
+        #v:torch.Size([2, 12, 146, 64]) 
+        #x:torch.Size([2, 146, 768])
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x, attn
 
 class Block(nn.Module):
     def __init__(
@@ -374,6 +424,46 @@ class Block(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x, attn
 
+class BlockForViST(nn.Module):
+    def __init__(
+        self,
+        dim,
+        num_heads,
+        mlp_ratio=4.0,
+        qkv_bias=False,
+        qk_scale=None,
+        drop=0.0,
+        attn_drop=0.0,
+        drop_path=0.0,
+        act_layer=nn.GELU,
+        norm_layer=nn.LayerNorm,
+    ):
+        super().__init__()
+        self.norm1 = norm_layer(dim)
+        self.attn = Attention(
+            dim,
+            num_heads=num_heads,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            attn_drop=attn_drop,
+            proj_drop=drop,
+        )
+        # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.norm2 = norm_layer(dim)
+        mlp_hidden_dim = int(dim * mlp_ratio)
+        self.mlp = Mlp(
+            in_features=dim,
+            hidden_features=mlp_hidden_dim,
+            act_layer=act_layer,
+            drop=drop,
+        )
+
+    def forward(self, x, mask=None):
+        _x, attn = self.attn(self.norm1(x), mask=mask)
+        x = x + self.drop_path(_x)
+        x = x + self.drop_path(self.mlp(self.norm2(x)))
+        return x, attn
 
 class PatchEmbed(nn.Module):
     """ Image to Patch Embedding"""
@@ -558,7 +648,7 @@ class VisionTransformer(nn.Module):
     def visual_embed(self, _x, max_image_len=200, mask_it=False):
         _, _, ph, pw = self.patch_embed.proj.weight.shape
 
-        x = self.patch_embed(_x) # torch.Size([32, 3, 384, 384])
+        x = self.patch_embed(_x) # torch.Size([32, 3, 384, 384])->torch.Size([2, 768, 12, 12])
         x_mask = (_x.sum(dim=1) != 0).float()[:, None, :, :]
         x_mask = F.interpolate(x_mask, size=(x.shape[2], x.shape[3])).long()
         x_h = x_mask[:, 0].sum(dim=1)[:, 0]
@@ -581,9 +671,9 @@ class VisionTransformer(nn.Module):
                 for h, w in zip(x_h, x_w)
             ],
             dim=0,
-        )
+        ) # torch.Size([2, 768, 12, 12])
 
-        pos_embed = pos_embed.flatten(2).transpose(1, 2)
+        pos_embed = pos_embed.flatten(2).transpose(1, 2) # torch.Size([2, 144, 768])
         x = x.flatten(2).transpose(1, 2) # torch.Size([32, 144, 768])
         patch_index = (
             torch.stack(
