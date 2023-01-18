@@ -487,8 +487,8 @@ class BlockForViST(nn.Module):
 
         x_image = x_image + self.drop_path(_x_image)
         x_sensor = x_sensor + self.drop_path(_x_sensor)
-        # x_image = x_image * self.drop_path(_x_image)
-        # x_sensor = x_sensor * self.drop_path(_x_sensor)
+        # x_image = x_image + self.drop_path(_x_image)
+        # x_sensor = x_sensor + self.drop_path(_x_sensor)
 
         x_image = x_image + self.drop_path(self.mlp_image(self.norm2_image(x_image)))
         x_sensor = x_sensor + self.drop_path(self.mlp_sensor(self.norm2_sensor(x_sensor)))
