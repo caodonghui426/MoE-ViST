@@ -485,10 +485,12 @@ class BlockForViST(nn.Module):
     def forward(self,x_image,x_sensor):
         _x_image,_x_sensor, attn_image,attn_sensor = self.attn(self.norm_image(x_image),self.norm_sensor(x_sensor))
 
-        x_image = x_image + self.drop_path(_x_image)
-        x_sensor = x_sensor + self.drop_path(_x_sensor)
         # x_image = x_image + self.drop_path(_x_image)
         # x_sensor = x_sensor + self.drop_path(_x_sensor)
+        # x_image = x_image * self.drop_path(_x_image)
+        # x_sensor = x_sensor * self.drop_path(_x_sensor)
+        x_image = x_image + x_image * self.drop_path(_x_image)
+        x_sensor = x_sensor + x_sensor * self.drop_path(_x_sensor)
 
         x_image = x_image + self.drop_path(self.mlp_image(self.norm2_image(x_image)))
         x_sensor = x_sensor + self.drop_path(self.mlp_sensor(self.norm2_sensor(x_sensor)))
