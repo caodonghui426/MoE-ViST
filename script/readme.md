@@ -1,0 +1,4 @@
+想要用来做ImageNet的预训练
+
+class_df.csv
+用于记录类别名和对应的id，id用来模拟onehot编码

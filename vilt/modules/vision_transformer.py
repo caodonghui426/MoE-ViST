@@ -988,7 +988,7 @@ class VisionTransformerForViST(nn.Module):
         ) # torch.Size([2, 768, 12, 12])
 
         pos_embed = pos_embed.flatten(2).transpose(1, 2) # torch.Size([2, 144, 768])
-        x = x.flatten(2).transpose(1, 2) # torch.Size([32, 144, 768])
+        x = x.flatten(2).transpose(1, 2) # torch.Size([2, 768, 12, 12])->torch.Size([2, 144, 768])
         patch_index = (
             torch.stack(
                 torch.meshgrid(

@@ -5,9 +5,19 @@ import torch
 
 
 class DNNF2(torch.nn.Module):
-    
+    """dnnf2 图片加传感器
+
+    Args:
+        torch (_type_): _description_
+    """
  
     def __init__(self,sensor_nums,config):
+        """dnnf2 图片加传感器
+
+        Args:
+            sensor_nums (int): 传感器输入数量
+            config (dict): 配置信息
+        """
         super(DNNF2,self).__init__()
         self.config = config
         self.sensor_linear = torch.nn.Linear(sensor_nums,768)
@@ -111,12 +121,20 @@ class DNNF2(torch.nn.Module):
         x = self.linear4(x)
         return {"cls_output":x}
 
-
-
 class DNNF2PictureOnly(torch.nn.Module):
-    
+    """DNNF2 picture only
+
+    Args:
+        torch (_type_): _description_
+    """
  
     def __init__(self,sensor_nums,config):
+        """DNNF2 picture only
+
+        Args:
+            sensor_nums (int): 传感器数量
+            config (dict): 配置信息
+        """
         super(DNNF2PictureOnly,self).__init__()
         self.config = config
         self.sensor_linear = torch.nn.Linear(sensor_nums,768)
@@ -209,15 +227,17 @@ class DNNF2PictureOnly(torch.nn.Module):
         return {"cls_output":x}
 
 
-
 class DNNF2SensorOnly(torch.nn.Module):
-    
+    """DNNF2 sensor only
+
+    Args:
+        torch (_type_): _description_
+    """
  
     def __init__(self,sensor_nums,config):
         super(DNNF2SensorOnly,self).__init__()
-        self.config = config
         self.sensor_linear = torch.nn.Linear(sensor_nums,768)
-
+        self.config = config
 
         # DNNF2结构
         self.linear1=torch.nn.Linear(64,512)

@@ -4,10 +4,13 @@ import vilt.modules.vision_transformer as vit
 import torch
 
 class sensorViLOnlyTransformerSS(nn.Module):
+    """sensorViLOnlyTransformerSS-仅vit
 
+    Args:
+        nn (_type_): _description_
+    """
     def __init__(self, sensor_class_n, output_class_n,config):
         super().__init__()
-        self.config = config
         self.token_type_embeddings = nn.Embedding(2, config.hidden_size)
         self.token_type_embeddings.apply(objectives.init_weights)
         self.transformer = getattr(vit, config.vit)(
@@ -28,7 +31,7 @@ class sensorViLOnlyTransformerSS(nn.Module):
     ):
 
         if image_embeds is None and image_masks is None:
-            img = batch["image"].to(self.config.device)
+            img = batch["image"].to(config.device)
 
             (
                 image_embeds,  # torch.Size([1, 217, 768])
@@ -37,7 +40,7 @@ class sensorViLOnlyTransformerSS(nn.Module):
                 image_labels,
             ) = self.transformer.visual_embed(
                 img,
-                max_image_len=self.config.max_image_len,
+                max_image_len=config.max_image_len,
                 mask_it=mask_image,
             )
         else:
@@ -51,15 +54,15 @@ class sensorViLOnlyTransformerSS(nn.Module):
         )
         # sensor_masks = batch['sensor_masks'] # 序列数量
         batch_size = img.shape[0]
-        sensor_masks = torch.ones(batch_size, 1).to(self.config.device)  # 序列数量
-        image_masks = image_masks.to(self.config.device)
+        sensor_masks = torch.ones(batch_size, 1).to(config.device)  # 序列数量
+        image_masks = image_masks.to(config.device)
         co_embeds = image_embeds
         co_masks = image_masks
 
-        x = co_embeds.to(self.config.device)  # torch.Size([1, 145, 768])
+        x = co_embeds.to(config.device)  # torch.Size([1, 145, 768])
 
         for i, blk in enumerate(self.transformer.blocks):
-            blk = blk.to(self.config.device)
+            blk = blk.to(config.device)
             x, _attn = blk(x, mask=co_masks)  # co_masks = torch.Size([1, 211])
 
         x = self.transformer.norm(x)  # torch.Size([1, 240, 768])
@@ -94,12 +97,10 @@ class sensorViLOnlyTransformerSS(nn.Module):
         return ret
 
 
-
 class sensorViLTransformerSS(nn.Module):
 
     def __init__(self,sensor_class_n,output_class_n,config):
         super().__init__()
-        self.config = config
         self.sensor_linear = nn.Linear(sensor_class_n,config.hidden_size) 
 
         self.token_type_embeddings = nn.Embedding(2, config.hidden_size)
@@ -129,12 +130,12 @@ class sensorViLTransformerSS(nn.Module):
         image_embeds=None,
         image_masks=None,
     ):
-        sensor = batch['sensor'].to(self.config.device)
+        sensor = batch['sensor'].to(config.device)
         sensor_embeds = self.sensor_linear(sensor) # input[1,1,12]  output[1,1,768]
         
 
         if image_embeds is None and image_masks is None:
-            img = batch["image"].to(self.config.device)
+            img = batch["image"].to(config.device)
        
             (
                 image_embeds, # torch.Size([1, 217, 768])
@@ -143,7 +144,7 @@ class sensorViLTransformerSS(nn.Module):
                 image_labels,
             ) = self.transformer.visual_embed(
                 img,
-                max_image_len=self.config.max_image_len,
+                max_image_len=config.max_image_len,
                 mask_it=mask_image,
             )
         else:
@@ -157,15 +158,15 @@ class sensorViLTransformerSS(nn.Module):
             )
         # sensor_masks = batch['sensor_masks'] # 序列数量
         batch_size = img.shape[0]
-        sensor_masks = torch.ones(batch_size,1).to(self.config.device) # 序列数量
-        image_masks = image_masks.to(self.config.device)
+        sensor_masks = torch.ones(batch_size,1).to(config.device) # 序列数量
+        image_masks = image_masks.to(config.device)
         co_embeds = torch.cat([sensor_embeds, image_embeds], dim=1) # torch.Size([1, 240, 768]) ->240=217+23
         co_masks = torch.cat([sensor_masks, image_masks], dim=1) # torch.Size([1, 240])
 
-        x = co_embeds.to(self.config.device) # torch.Size([1, 211, 768])
+        x = co_embeds.to(config.device) # torch.Size([1, 211, 768])
 
         for i, blk in enumerate(self.transformer.blocks): 
-            blk = blk.to(self.config.device)
+            blk = blk.to(config.device)
             x, _attn = blk(x, mask=co_masks) # co_masks = torch.Size([1, 211])
 
         x = self.transformer.norm(x) # torch.Size([1, 240, 768])
@@ -204,12 +205,10 @@ class sensorViLTransformerSS(nn.Module):
         return ret
 
 
-
 class sensorOnlyViLTransformerSS(nn.Module):
 
     def __init__(self,sensor_class_n,output_class_n,config):
         super().__init__()
-        self.config = config
         self.sensor_linear = nn.Linear(sensor_class_n,config.hidden_size) 
 
         self.token_type_embeddings = nn.Embedding(2, config.hidden_size)
@@ -239,7 +238,7 @@ class sensorOnlyViLTransformerSS(nn.Module):
         # image_embeds=None,
         # image_masks=None,
     ):
-        sensor = batch['sensor'].to(self.config.device)
+        sensor = batch['sensor'].to(config.device)
         sensor_embeds = self.sensor_linear(sensor) # input[1,1,12]  output[1,1,768]
         
 
@@ -267,17 +266,17 @@ class sensorOnlyViLTransformerSS(nn.Module):
         #     )
         # sensor_masks = batch['sensor_masks'] # 序列数量
         # batch_size = img.shape[0]
-        sensor_masks = torch.ones(sensor_embeds.shape[1],1).to(self.config.device) # 序列数量
-        # image_masks = image_masks.to(self.config.device)
+        sensor_masks = torch.ones(sensor_embeds.shape[1],1).to(config.device) # 序列数量
+        # image_masks = image_masks.to(config.device)
         # co_embeds = torch.cat([sensor_embeds, image_embeds], dim=1) # torch.Size([1, 240, 768]) ->240=217+23
         # co_masks = torch.cat([sensor_masks, image_masks], dim=1) # torch.Size([1, 240])
         co_embeds = sensor_embeds
         co_masks = sensor_masks
 
-        x = co_embeds.to(self.config.device) # torch.Size([1, 1, 768])
+        x = co_embeds.to(config.device) # torch.Size([1, 1, 768])
 
         for i, blk in enumerate(self.transformer.blocks):
-            blk = blk.to(self.config.device)
+            blk = blk.to(config.device)
             x, _attn = blk(x, mask=co_masks)
 
         x = self.transformer.norm(x) # torch.Size([1, 240, 768])

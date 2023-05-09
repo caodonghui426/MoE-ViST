@@ -5,7 +5,11 @@ import torch
 import pretrainedmodels
 
 class sensorResnet50TransformerSS(nn.Module):
+    """sensorResnet50TransformerSS
 
+    Args:
+        nn (_type_): _description_
+    """
     def __init__(self,sensor_class_n,output_class_n,config):
         super().__init__()
         self.config = config
