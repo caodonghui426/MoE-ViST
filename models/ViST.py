@@ -28,7 +28,7 @@ class ViST(nn.Module):
         # self.transformer = getattr(vit, config.vit)(
         #         pretrained=False, config=vars(config)
         #     )
-        self.transformer = vit.VisionTransformerForViST(img_size=config.img_size,patch_size=config.patch_size,embed_dim=config.hidden_size,num_heads=config.num_heads,mlp_ratio=config.mlp_ratio,qkv_bias=False,qk_scale=None)
+        self.transformer = vit.VisionTransformerForViST(img_size=config.img_size,patch_size=config.patch_size,embed_dim=config.hidden_size,depth=config.num_layers,num_heads=config.num_heads,mlp_ratio=config.mlp_ratio,qkv_bias=False,qk_scale=None)
         
        
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)

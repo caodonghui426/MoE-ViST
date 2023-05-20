@@ -54,7 +54,8 @@ def download_clip(
     download_target = os.path.join(root, filename)
 
     if os.path.exists(download_target) and not os.path.isfile(download_target):
-        raise RuntimeError(f"{download_target} exists and is not a regular file")
+        raise RuntimeError(
+            f"{download_target} exists and is not a regular file")
 
     if os.path.isfile(download_target):
         if (
@@ -288,7 +289,7 @@ class Mlp(nn.Module):
 class Attention(nn.Module):
     def __init__(
         self,
-        dim, # embedding dimension ，mine is 768
+        dim,  # embedding dimension ，mine is 768
         num_heads=8,
         qkv_bias=False,
         qk_scale=None,
@@ -297,7 +298,7 @@ class Attention(nn.Module):
     ):
         super().__init__()
         self.num_heads = num_heads
-        head_dim = dim // num_heads # 768/12=32
+        head_dim = dim // num_heads  # 768/12=32
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = qk_scale or head_dim ** -0.5
 
@@ -307,37 +308,39 @@ class Attention(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x, mask=None):
-        B, N, C = x.shape # torch.Size([2, 146, 768])
-        qkv = ( # torch.Size([3, 2, 12, 146, 64])
+        B, N, C = x.shape  # torch.Size([2, 146, 768])
+        qkv = (  # torch.Size([3, 2, 12, 146, 64])
             self.qkv(x)
             .reshape(B, N, 3, self.num_heads, C // self.num_heads)
             .permute(2, 0, 3, 1, 4)
         )
         q, k, v = (
-            qkv[0], # torch.Size([2, 12, 146, 64])
-            qkv[1], # torch.Size([2, 12, 146, 64])
-            qkv[2], # torch.Size([2, 12, 146, 64])
+            qkv[0],  # torch.Size([2, 12, 146, 64])
+            qkv[1],  # torch.Size([2, 12, 146, 64])
+            qkv[2],  # torch.Size([2, 12, 146, 64])
         )  # make torchscript happy (cannot use tensor as tuple)
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale # torch.Size([2, 12, 146, 146])
+        # torch.Size([2, 12, 146, 146])
+        attn = (q @ k.transpose(-2, -1)) * self.scale
         if mask is not None:
             # mask = mask.bool() # device:cuda,
-            mask = mask.type(torch.bool) # device:cuda,
+            mask = mask.type(torch.bool)  # device:cuda,
             attn = attn.masked_fill(~mask[:, None, None, :], float("-inf"))
-        attn = attn.softmax(dim=-1) # torch.Size([2, 12, 146, 146])
+        attn = attn.softmax(dim=-1)  # torch.Size([2, 12, 146, 146])
         attn = self.attn_drop(attn)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C) 
-        #v:torch.Size([2, 12, 146, 64]) 
+        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        #v:torch.Size([2, 12, 146, 64])
         #x:torch.Size([2, 146, 768])
         x = self.proj(x)
         x = self.proj_drop(x)
         return x, attn
-        
+
+
 class AttentionForViST(nn.Module):
     def __init__(
         self,
-        dim, # embedding dimension ，mine is 768
+        dim,  # embedding dimension ，mine is 768
         num_heads=8,
         qkv_bias=False,
         qk_scale=None,
@@ -346,7 +349,7 @@ class AttentionForViST(nn.Module):
     ):
         super().__init__()
         self.num_heads = num_heads
-        head_dim = dim // num_heads # 768/12=32
+        head_dim = dim // num_heads  # 768/12=32
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
         self.scale = qk_scale or head_dim ** -0.5
 
@@ -357,46 +360,51 @@ class AttentionForViST(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x_image,x_sensor):
-        B, N, C = x_image.shape # torch.Size([2, 146, 768])
-        qkv_image = ( # torch.Size([3, 2, 12, 146, 64]) # output is attn_image
+    def forward(self, x_image, x_sensor):
+        B, N, C = x_image.shape  # torch.Size([2, 146, 768])
+        qkv_image = (  # torch.Size([3, 2, 12, 146, 64]) # output is attn_image
             self.qkv_image(x_image)
             .reshape(B, N, 3, self.num_heads, C // self.num_heads)
             .permute(2, 0, 3, 1, 4)
         )
-        qkv_sensor = ( # torch.Size([3, 2, 12, 146, 64])
+        qkv_sensor = (  # torch.Size([3, 2, 12, 146, 64])
             self.qkv_sensor(x_sensor)
             .reshape(B, N, 3, self.num_heads, C // self.num_heads)
             .permute(2, 0, 3, 1, 4)
         )
         q_sensor, k_image, v_image = (
-            qkv_image[0], # torch.Size([2, 12, 146, 64])
-            qkv_image[1], # torch.Size([2, 12, 146, 64])
-            qkv_image[2], # torch.Size([2, 12, 146, 64])
+            qkv_image[0],  # torch.Size([2, 12, 146, 64])
+            qkv_image[1],  # torch.Size([2, 12, 146, 64])
+            qkv_image[2],  # torch.Size([2, 12, 146, 64])
         )  # make torchscript happy (cannot use tensor as tuple)
         q_image, k_sensor, v_sensor = (
-            qkv_sensor[0], # torch.Size([2, 12, 146, 64])
-            qkv_sensor[1], # torch.Size([2, 12, 146, 64])
-            qkv_sensor[2], # torch.Size([2, 12, 146, 64])
+            qkv_sensor[0],  # torch.Size([2, 12, 146, 64])
+            qkv_sensor[1],  # torch.Size([2, 12, 146, 64])
+            qkv_sensor[2],  # torch.Size([2, 12, 146, 64])
         )  # make torchscript happy (cannot use tensor as tuple)
 
-        attn_image = (q_sensor @ k_image.transpose(-2, -1)) * self.scale # torch.Size([2, 12, 146, 146])
-        attn_sensor = (q_image @ k_sensor.transpose(-2, -1)) * self.scale # torch.Size([2, 12, 146, 146])
+        attn_image = (q_sensor @ k_image.transpose(-2, -1)) * \
+            self.scale  # torch.Size([2, 12, 146, 146])
+        attn_sensor = (q_image @ k_sensor.transpose(-2, -1)) * \
+            self.scale  # torch.Size([2, 12, 146, 146])
 
-        attn_image = attn_image.softmax(dim=-1) # torch.Size([2, 12, 146, 146])
-        attn_sensor = attn_sensor.softmax(dim=-1) # torch.Size([2, 12, 146, 146])
+        # torch.Size([2, 12, 146, 146])
+        attn_image = attn_image.softmax(dim=-1)
+        # torch.Size([2, 12, 146, 146])
+        attn_sensor = attn_sensor.softmax(dim=-1)
         attn_image = self.attn_drop(attn_image)
         attn_sensor = self.attn_drop(attn_sensor)
 
-        x_image = (attn_image @ v_image).transpose(1, 2).reshape(B, N, C) 
-        x_sensor = (attn_sensor @ v_sensor).transpose(1, 2).reshape(B, N, C) 
-        #v:torch.Size([2, 12, 146, 64]) 
+        x_image = (attn_image @ v_image).transpose(1, 2).reshape(B, N, C)
+        x_sensor = (attn_sensor @ v_sensor).transpose(1, 2).reshape(B, N, C)
+        #v:torch.Size([2, 12, 146, 64])
         #x:torch.Size([2, 146, 768])
         x_image = self.proj(x_image)
         x_sensor = self.proj(x_sensor)
         x_image = self.proj_drop(x_image)
         x_sensor = self.proj_drop(x_sensor)
-        return x_image,x_sensor, attn_image,attn_sensor
+        return x_image, x_sensor, attn_image, attn_sensor
+
 
 class Block(nn.Module):
     def __init__(
@@ -423,7 +431,8 @@ class Block(nn.Module):
             proj_drop=drop,
         )
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
-        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.drop_path = DropPath(
+            drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(
@@ -438,6 +447,7 @@ class Block(nn.Module):
         x = x + self.drop_path(_x)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x, attn
+
 
 class BlockForViST(nn.Module):
     def __init__(
@@ -465,7 +475,8 @@ class BlockForViST(nn.Module):
             proj_drop=drop,
         )
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
-        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+        self.drop_path = DropPath(
+            drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2_image = norm_layer(dim)
         self.norm2_sensor = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
@@ -482,8 +493,9 @@ class BlockForViST(nn.Module):
             drop=drop,
         )
 
-    def forward(self,x_image,x_sensor):
-        _x_image,_x_sensor, attn_image,attn_sensor = self.attn(self.norm_image(x_image),self.norm_sensor(x_sensor))
+    def forward(self, x_image, x_sensor):
+        _x_image, _x_sensor, attn_image, attn_sensor = self.attn(
+            self.norm_image(x_image), self.norm_sensor(x_sensor))
 
         x_image = x_image + self.drop_path(_x_image)
         x_sensor = x_sensor + self.drop_path(_x_sensor)
@@ -492,9 +504,12 @@ class BlockForViST(nn.Module):
         # x_image = x_image + x_image * self.drop_path(_x_image)
         # x_sensor = x_sensor + x_sensor * self.drop_path(_x_sensor)
 
-        x_image = x_image + self.drop_path(self.mlp_image(self.norm2_image(x_image)))
-        x_sensor = x_sensor + self.drop_path(self.mlp_sensor(self.norm2_sensor(x_sensor)))
-        return x_image,x_sensor, attn_image,attn_sensor
+        x_image = x_image + \
+            self.drop_path(self.mlp_image(self.norm2_image(x_image)))
+        x_sensor = x_sensor + \
+            self.drop_path(self.mlp_sensor(self.norm2_sensor(x_sensor)))
+        return x_image, x_sensor, attn_image, attn_sensor
+
 
 class PatchEmbed(nn.Module):
     """ Image to Patch Embedding"""
@@ -510,7 +525,8 @@ class PatchEmbed(nn.Module):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
-        num_patches = (img_size[1] // patch_size[1]) * (img_size[0] // patch_size[0])
+        num_patches = (img_size[1] // patch_size[1]) * \
+            (img_size[0] // patch_size[0])
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = num_patches
@@ -598,7 +614,8 @@ class VisionTransformer(nn.Module):
         self.patch_size = patch_size
         self.patch_dim = img_size // patch_size
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+        self.pos_embed = nn.Parameter(
+            torch.zeros(1, num_patches + 1, embed_dim))
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         if add_norm_before_transformer:
@@ -670,7 +687,8 @@ class VisionTransformer(nn.Module):
 
         # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
         indices_replaced = (
-            torch.bernoulli(torch.full(labels.shape[:-1], 0.8)).bool() & masked_indices
+            torch.bernoulli(torch.full(
+                labels.shape[:-1], 0.8)).bool() & masked_indices
         )
         feats[indices_replaced] = self.mask_token.to(feats)
 
@@ -679,7 +697,8 @@ class VisionTransformer(nn.Module):
     def visual_embed(self, _x, max_image_len=200, mask_it=False):
         _, _, ph, pw = self.patch_embed.proj.weight.shape
 
-        x = self.patch_embed(_x) # torch.Size([32, 3, 384, 384])->torch.Size([2, 768, 12, 12])
+        # torch.Size([32, 3, 384, 384])->torch.Size([2, 768, 12, 12])
+        x = self.patch_embed(_x)
         x_mask = (_x.sum(dim=1) != 0).float()[:, None, :, :]
         x_mask = F.interpolate(x_mask, size=(x.shape[2], x.shape[3])).long()
         x_h = x_mask[:, 0].sum(dim=1)[:, 0]
@@ -702,14 +721,16 @@ class VisionTransformer(nn.Module):
                 for h, w in zip(x_h, x_w)
             ],
             dim=0,
-        ) # torch.Size([2, 768, 12, 12])
+        )  # torch.Size([2, 768, 12, 12])
 
-        pos_embed = pos_embed.flatten(2).transpose(1, 2) # torch.Size([2, 144, 768])
-        x = x.flatten(2).transpose(1, 2) # torch.Size([32, 144, 768])
+        pos_embed = pos_embed.flatten(2).transpose(
+            1, 2)  # torch.Size([2, 144, 768])
+        x = x.flatten(2).transpose(1, 2)  # torch.Size([32, 144, 768])
         patch_index = (
             torch.stack(
                 torch.meshgrid(
-                    torch.arange(x_mask.shape[-2]), torch.arange(x_mask.shape[-1])
+                    torch.arange(x_mask.shape[-2]
+                                 ), torch.arange(x_mask.shape[-1])
                 ),
                 dim=-1,
             )[None, None, :, :, :]
@@ -751,7 +772,8 @@ class VisionTransformer(nn.Module):
         select = list()
         for i, (v, nv, p) in enumerate(zip(valid_nums, non_valid_nums, pad_nums)):
             if p <= 0:
-                valid_choice = torch.multinomial(torch.ones(v).float(), max_image_len)
+                valid_choice = torch.multinomial(
+                    torch.ones(v).float(), max_image_len)
                 select.append(valid_row_idx[i][valid_choice])
             else:
                 pad_choice = torch.multinomial(
@@ -774,7 +796,7 @@ class VisionTransformer(nn.Module):
 
             label[x_mask == 0] = -100
             label = torch.cat(
-                [torch.full((label.shape[0], 1, 3), -100).to(label), label,], dim=1,
+                [torch.full((label.shape[0], 1, 3), -100).to(label), label, ], dim=1,
             )
 
         cls_tokens = self.cls_token.expand(B, -1, -1)
@@ -788,7 +810,8 @@ class VisionTransformer(nn.Module):
         if self.add_norm_before_transformer:
             x = self.pre_norm(x)
 
-        x_mask = torch.cat([torch.ones(x_mask.shape[0], 1).to(x_mask), x_mask], dim=1)
+        x_mask = torch.cat(
+            [torch.ones(x_mask.shape[0], 1).to(x_mask), x_mask], dim=1)
 
         if mask_it:
             return x, x_mask, (patch_index, (H, W)), label
@@ -811,6 +834,7 @@ class VisionTransformer(nn.Module):
         x = x[:, 0]
         x = self.head(x)
         return x
+
 
 class VisionTransformerForViST(nn.Module):
     """ Vision Transformer
@@ -881,7 +905,8 @@ class VisionTransformerForViST(nn.Module):
         self.patch_size = patch_size
         self.patch_dim = img_size // patch_size
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+        self.pos_embed = nn.Parameter(
+            torch.zeros(1, num_patches + 1, embed_dim))
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         if add_norm_before_transformer:
@@ -953,7 +978,8 @@ class VisionTransformerForViST(nn.Module):
 
         # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
         indices_replaced = (
-            torch.bernoulli(torch.full(labels.shape[:-1], 0.8)).bool() & masked_indices
+            torch.bernoulli(torch.full(
+                labels.shape[:-1], 0.8)).bool() & masked_indices
         )
         feats[indices_replaced] = self.mask_token.to(feats)
 
@@ -962,7 +988,8 @@ class VisionTransformerForViST(nn.Module):
     def visual_embed(self, _x, max_image_len=200, mask_it=False):
         _, _, ph, pw = self.patch_embed.proj.weight.shape
 
-        x = self.patch_embed(_x) # torch.Size([32, 3, 384, 384])->torch.Size([2, 768, 12, 12])
+        # torch.Size([32, 3, 384, 384])->torch.Size([2, 768, 12, 12])
+        x = self.patch_embed(_x)
         x_mask = (_x.sum(dim=1) != 0).float()[:, None, :, :]
         x_mask = F.interpolate(x_mask, size=(x.shape[2], x.shape[3])).long()
         x_h = x_mask[:, 0].sum(dim=1)[:, 0]
@@ -985,14 +1012,38 @@ class VisionTransformerForViST(nn.Module):
                 for h, w in zip(x_h, x_w)
             ],
             dim=0,
+        )  # torch.Size([2, 768, 12, 12])
+        """
+        /code:
+                pos_embed = torch.cat(
+            [
+                F.pad(
+                    F.interpolate(
+                        spatial_pos, size=(h, w), mode="bilinear", align_corners=True,
+                    ),
+                    (0, W - w, 0, H - h),
+                )
+                for h, w in zip(x_h, x_w)
+            ],
+            dim=0,
         ) # torch.Size([2, 768, 12, 12])
+        这段代码的主要作用是生成位置编码。具体来说，pos_embed是一个四维的张量，其形状为[num_patches, embedding_dim, h, w]，其中num_patches表示图像中的patch数量，embedding_dim表示每个patch的embedding维度，h和w表示每个patch的高和宽。
 
-        pos_embed = pos_embed.flatten(2).transpose(1, 2) # torch.Size([2, 144, 768])
-        x = x.flatten(2).transpose(1, 2) # torch.Size([2, 768, 12, 12])->torch.Size([2, 144, 768])
+代码中的第一行将所有的spatial_pos（shape: [num_patches, 2]）通过插值方法等比例缩放到[h, w]的尺寸上，并使用F.pad函数在右边和下方填充0，使其形状为[1, 2, h, w]，即原位置信息被放置于一个高和宽都为h和w的小方块内。这样操作的目的是为了让每个小方块的位置信息区域对应每个patch的位置。
+
+接下来，for h, w in zip(x_h, x_w)将循环遍历每个patch的高和宽，并将上一步得到的位置信息小方块在适当位置上复制，填充整个位置编码张量，形状为[num_patches, embedding_dim, H, W]。
+
+最终得到的pos_embed的形状为[num_patches, embedding_dim, H, W]，其中num_patches等于batch_size * num_patches_per_img，即一个batch中所有图像的patch数量之和。
+        """
+        pos_embed = pos_embed.flatten(2).transpose(
+            1, 2)  # torch.Size([2, 144, 768])
+        # torch.Size([2, 768, 12, 12])->torch.Size([2, 144, 768])
+        x = x.flatten(2).transpose(1, 2)
         patch_index = (
             torch.stack(
                 torch.meshgrid(
-                    torch.arange(x_mask.shape[-2]), torch.arange(x_mask.shape[-1])
+                    torch.arange(x_mask.shape[-2]
+                                 ), torch.arange(x_mask.shape[-1])
                 ),
                 dim=-1,
             )[None, None, :, :, :]
@@ -1034,7 +1085,8 @@ class VisionTransformerForViST(nn.Module):
         select = list()
         for i, (v, nv, p) in enumerate(zip(valid_nums, non_valid_nums, pad_nums)):
             if p <= 0:
-                valid_choice = torch.multinomial(torch.ones(v).float(), max_image_len)
+                valid_choice = torch.multinomial(
+                    torch.ones(v).float(), max_image_len)
                 select.append(valid_row_idx[i][valid_choice])
             else:
                 pad_choice = torch.multinomial(
@@ -1057,7 +1109,7 @@ class VisionTransformerForViST(nn.Module):
 
             label[x_mask == 0] = -100
             label = torch.cat(
-                [torch.full((label.shape[0], 1, 3), -100).to(label), label,], dim=1,
+                [torch.full((label.shape[0], 1, 3), -100).to(label), label, ], dim=1,
             )
 
         cls_tokens = self.cls_token.expand(B, -1, -1)
@@ -1071,7 +1123,8 @@ class VisionTransformerForViST(nn.Module):
         if self.add_norm_before_transformer:
             x = self.pre_norm(x)
 
-        x_mask = torch.cat([torch.ones(x_mask.shape[0], 1).to(x_mask), x_mask], dim=1)
+        x_mask = torch.cat(
+            [torch.ones(x_mask.shape[0], 1).to(x_mask), x_mask], dim=1)
 
         if mask_it:
             return x, x_mask, (patch_index, (H, W)), label
@@ -1095,6 +1148,7 @@ class VisionTransformerForViST(nn.Module):
         x = self.head(x)
         return x
 
+
 class DistilledVisionTransformer(VisionTransformer):
     """ Vision Transformer with distillation token.
 
@@ -1108,7 +1162,8 @@ class DistilledVisionTransformer(VisionTransformer):
         super().__init__(*args, **kwargs)
         self.dist_token = nn.Parameter(torch.zeros(1, 1, self.embed_dim))
         num_patches = self.patch_embed.num_patches
-        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 2, self.embed_dim))
+        self.pos_embed = nn.Parameter(
+            torch.zeros(1, num_patches + 2, self.embed_dim))
 
         trunc_normal_(self.dist_token, std=0.02)
         trunc_normal_(self.pos_embed, std=0.02)
@@ -1146,7 +1201,8 @@ class DistilledVisionTransformer(VisionTransformer):
         patch_index = (
             torch.stack(
                 torch.meshgrid(
-                    torch.arange(x_mask.shape[-2]), torch.arange(x_mask.shape[-1])
+                    torch.arange(x_mask.shape[-2]
+                                 ), torch.arange(x_mask.shape[-1])
                 ),
                 dim=-1,
             )[None, None, :, :, :]
@@ -1188,7 +1244,8 @@ class DistilledVisionTransformer(VisionTransformer):
         select = list()
         for i, (v, nv, p) in enumerate(zip(valid_nums, non_valid_nums, pad_nums)):
             if p <= 0:
-                valid_choice = torch.multinomial(torch.ones(v).float(), max_image_len)
+                valid_choice = torch.multinomial(
+                    torch.ones(v).float(), max_image_len)
                 select.append(valid_row_idx[i][valid_choice])
             else:
                 pad_choice = torch.multinomial(
@@ -1210,7 +1267,7 @@ class DistilledVisionTransformer(VisionTransformer):
 
             label[x_mask == 0] = -100
             label = torch.cat(
-                [torch.full((label.shape[0], 1, 3), -100).to(label), label,], dim=1,
+                [torch.full((label.shape[0], 1, 3), -100).to(label), label, ], dim=1,
             )
 
         cls_tokens = self.cls_token.expand(B, -1, -1)
@@ -1225,7 +1282,8 @@ class DistilledVisionTransformer(VisionTransformer):
         if self.add_norm_before_transformer:
             x = self.pre_norm(x)
 
-        x_mask = torch.cat([torch.ones(x_mask.shape[0], 2).to(x_mask), x_mask], dim=1)
+        x_mask = torch.cat(
+            [torch.ones(x_mask.shape[0], 2).to(x_mask), x_mask], dim=1)
 
         if mask_it:
             return x, x_mask, (patch_index, (H, W)), label
@@ -1253,7 +1311,8 @@ class DistilledVisionTransformer(VisionTransformer):
 def resize_pos_embed(posemb, posemb_new):
     # Rescale the grid of position embeddings when loading from state_dict. Adapted from
     # https://github.com/google-research/vision_transformer/blob/00883dd691c63a6830751563748663526e811cee/vit_jax/checkpoint.py#L224
-    _logger.info("Resized position embedding: %s to %s", posemb.shape, posemb_new.shape)
+    _logger.info("Resized position embedding: %s to %s",
+                 posemb.shape, posemb_new.shape)
     ntok_new = posemb_new.shape[1]
     if True:
         posemb_tok, posemb_grid = posemb[:, :1], posemb[0, 1:]
@@ -1263,9 +1322,12 @@ def resize_pos_embed(posemb, posemb_new):
     gs_old = int(math.sqrt(len(posemb_grid)))
     gs_new = int(math.sqrt(ntok_new))
     _logger.info("Position embedding grid-size from %s to %s", gs_old, gs_new)
-    posemb_grid = posemb_grid.reshape(1, gs_old, gs_old, -1).permute(0, 3, 1, 2)
-    posemb_grid = F.interpolate(posemb_grid, size=(gs_new, gs_new), mode="bilinear")
-    posemb_grid = posemb_grid.permute(0, 2, 3, 1).reshape(1, gs_new * gs_new, -1)
+    posemb_grid = posemb_grid.reshape(
+        1, gs_old, gs_old, -1).permute(0, 3, 1, 2)
+    posemb_grid = F.interpolate(
+        posemb_grid, size=(gs_new, gs_new), mode="bilinear")
+    posemb_grid = posemb_grid.permute(
+        0, 2, 3, 1).reshape(1, gs_new * gs_new, -1)
     posemb = torch.cat([posemb_tok, posemb_grid], dim=1)
     return posemb
 
@@ -1349,7 +1411,8 @@ def vit_base_patch16_224(pretrained=False, **kwargs):
     """ ViT-Base (ViT-B/16) from original paper (https://arxiv.org/abs/2010.11929).
     ImageNet-1k weights fine-tuned from in21k @ 224x224, source https://github.com/google-research/vision_transformer.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=768,
+                        depth=12, num_heads=12, **kwargs)
     model = _create_vision_transformer(
         "vit_base_patch16_224", pretrained=pretrained, **model_kwargs
     )
@@ -1360,7 +1423,8 @@ def vit_base_patch16_224(pretrained=False, **kwargs):
 def vit_base_patch32_224(pretrained=False, **kwargs):
     """ ViT-Base (ViT-B/32) from original paper (https://arxiv.org/abs/2010.11929). No pretrained weights.
     """
-    model_kwargs = dict(patch_size=32, embed_dim=768, depth=12, num_heads=12, **kwargs)
+    model_kwargs = dict(patch_size=32, embed_dim=768,
+                        depth=12, num_heads=12, **kwargs)
     model = _create_vision_transformer(
         "vit_base_patch32_224", pretrained=pretrained, **model_kwargs
     )
@@ -1372,7 +1436,8 @@ def vit_base_patch16_384(pretrained=False, **kwargs):
     """ ViT-Base model (ViT-B/16) from original paper (https://arxiv.org/abs/2010.11929).
     ImageNet-1k weights fine-tuned from in21k @ 384x384, source https://github.com/google-research/vision_transformer.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=768,
+                        depth=12, num_heads=12, **kwargs)
     model = _create_vision_transformer(
         "vit_base_patch16_384", pretrained=pretrained, **model_kwargs
     )
@@ -1384,7 +1449,8 @@ def vit_base_patch32_384(pretrained=False, **kwargs):
     """ ViT-Base model (ViT-B/32) from original paper (https://arxiv.org/abs/2010.11929).
     ImageNet-1k weights fine-tuned from in21k @ 384x384, source https://github.com/google-research/vision_transformer.
     """
-    model_kwargs = dict(patch_size=32, embed_dim=768, depth=12, num_heads=12, **kwargs)
+    model_kwargs = dict(patch_size=32, embed_dim=768,
+                        depth=12, num_heads=12, **kwargs)
     model = _create_vision_transformer(
         "vit_base_patch32_384", pretrained=pretrained, **model_kwargs
     )
@@ -1396,7 +1462,8 @@ def vit_large_patch16_224(pretrained=False, **kwargs):
     """ ViT-Large model (ViT-L/32) from original paper (https://arxiv.org/abs/2010.11929).
     ImageNet-1k weights fine-tuned from in21k @ 224x224, source https://github.com/google-research/vision_transformer.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=1024, depth=24, num_heads=16, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=1024,
+                        depth=24, num_heads=16, **kwargs)
     model = _create_vision_transformer(
         "vit_large_patch16_224", pretrained=pretrained, **model_kwargs
     )
@@ -1407,7 +1474,8 @@ def vit_large_patch16_224(pretrained=False, **kwargs):
 def vit_large_patch32_224(pretrained=False, **kwargs):
     """ ViT-Large model (ViT-L/32) from original paper (https://arxiv.org/abs/2010.11929). No pretrained weights.
     """
-    model_kwargs = dict(patch_size=32, embed_dim=1024, depth=24, num_heads=16, **kwargs)
+    model_kwargs = dict(patch_size=32, embed_dim=1024,
+                        depth=24, num_heads=16, **kwargs)
     model = _create_vision_transformer(
         "vit_large_patch32_224", pretrained=pretrained, **model_kwargs
     )
@@ -1419,7 +1487,8 @@ def vit_large_patch16_384(pretrained=False, **kwargs):
     """ ViT-Large model (ViT-L/16) from original paper (https://arxiv.org/abs/2010.11929).
     ImageNet-1k weights fine-tuned from in21k @ 384x384, source https://github.com/google-research/vision_transformer.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=1024, depth=24, num_heads=16, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=1024,
+                        depth=24, num_heads=16, **kwargs)
     model = _create_vision_transformer(
         "vit_large_patch16_384", pretrained=pretrained, **model_kwargs
     )
@@ -1431,7 +1500,8 @@ def vit_large_patch32_384(pretrained=False, **kwargs):
     """ ViT-Large model (ViT-L/32) from original paper (https://arxiv.org/abs/2010.11929).
     ImageNet-1k weights fine-tuned from in21k @ 384x384, source https://github.com/google-research/vision_transformer.
     """
-    model_kwargs = dict(patch_size=32, embed_dim=1024, depth=24, num_heads=16, **kwargs)
+    model_kwargs = dict(patch_size=32, embed_dim=1024,
+                        depth=24, num_heads=16, **kwargs)
     model = _create_vision_transformer(
         "vit_large_patch32_384", pretrained=pretrained, **model_kwargs
     )
@@ -1678,7 +1748,8 @@ def vit_deit_tiny_patch16_224(pretrained=False, **kwargs):
     """ DeiT-tiny model @ 224x224 from paper (https://arxiv.org/abs/2012.12877).
     ImageNet-1k weights from https://github.com/facebookresearch/deit.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=192,
+                        depth=12, num_heads=3, **kwargs)
     model = _create_vision_transformer(
         "vit_deit_tiny_patch16_224", pretrained=pretrained, **model_kwargs
     )
@@ -1690,7 +1761,8 @@ def vit_deit_small_patch16_224(pretrained=False, **kwargs):
     """ DeiT-small model @ 224x224 from paper (https://arxiv.org/abs/2012.12877).
     ImageNet-1k weights from https://github.com/facebookresearch/deit.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=384, depth=12, num_heads=6, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=384,
+                        depth=12, num_heads=6, **kwargs)
     model = _create_vision_transformer(
         "vit_deit_small_patch16_224", pretrained=pretrained, **model_kwargs
     )
@@ -1702,7 +1774,8 @@ def vit_deit_base_patch16_224(pretrained=False, **kwargs):
     """ DeiT base model @ 224x224 from paper (https://arxiv.org/abs/2012.12877).
     ImageNet-1k weights from https://github.com/facebookresearch/deit.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=768,
+                        depth=12, num_heads=12, **kwargs)
     model = _create_vision_transformer(
         "vit_deit_base_patch16_224", pretrained=pretrained, **model_kwargs
     )
@@ -1714,7 +1787,8 @@ def vit_deit_base_patch16_384(pretrained=False, **kwargs):
     """ DeiT base model @ 384x384 from paper (https://arxiv.org/abs/2012.12877).
     ImageNet-1k weights from https://github.com/facebookresearch/deit.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=768,
+                        depth=12, num_heads=12, **kwargs)
     model = _create_vision_transformer(
         "vit_deit_base_patch16_384", pretrained=pretrained, **model_kwargs
     )
@@ -1726,7 +1800,8 @@ def vit_deit_tiny_distilled_patch16_224(pretrained=False, **kwargs):
     """ DeiT-tiny distilled model @ 224x224 from paper (https://arxiv.org/abs/2012.12877).
     ImageNet-1k weights from https://github.com/facebookresearch/deit.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=192, depth=12, num_heads=3, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=192,
+                        depth=12, num_heads=3, **kwargs)
     model = _create_vision_transformer(
         "vit_deit_tiny_distilled_patch16_224",
         pretrained=pretrained,
@@ -1741,7 +1816,8 @@ def vit_deit_small_distilled_patch16_224(pretrained=False, **kwargs):
     """ DeiT-small distilled model @ 224x224 from paper (https://arxiv.org/abs/2012.12877).
     ImageNet-1k weights from https://github.com/facebookresearch/deit.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=384, depth=12, num_heads=6, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=384,
+                        depth=12, num_heads=6, **kwargs)
     model = _create_vision_transformer(
         "vit_deit_small_distilled_patch16_224",
         pretrained=pretrained,
@@ -1756,7 +1832,8 @@ def vit_deit_base_distilled_patch16_224(pretrained=False, **kwargs):
     """ DeiT-base distilled model @ 224x224 from paper (https://arxiv.org/abs/2012.12877).
     ImageNet-1k weights from https://github.com/facebookresearch/deit.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=768,
+                        depth=12, num_heads=12, **kwargs)
     model = _create_vision_transformer(
         "vit_deit_base_distilled_patch16_224",
         pretrained=pretrained,
@@ -1771,7 +1848,8 @@ def vit_deit_base_distilled_patch16_384(pretrained=False, **kwargs):
     """ DeiT-base distilled model @ 384x384 from paper (https://arxiv.org/abs/2012.12877).
     ImageNet-1k weights from https://github.com/facebookresearch/deit.
     """
-    model_kwargs = dict(patch_size=16, embed_dim=768, depth=12, num_heads=12, **kwargs)
+    model_kwargs = dict(patch_size=16, embed_dim=768,
+                        depth=12, num_heads=12, **kwargs)
     model = _create_vision_transformer(
         "vit_deit_base_distilled_patch16_384",
         pretrained=pretrained,
@@ -1779,4 +1857,3 @@ def vit_deit_base_distilled_patch16_384(pretrained=False, **kwargs):
         **model_kwargs,
     )
     return model
-
