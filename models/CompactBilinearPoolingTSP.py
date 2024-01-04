@@ -4,22 +4,25 @@ import torch.nn.functional as F
 from vilt.modules import heads, objectives
 
 import vilt.modules.vision_transformer as vit
-class CompactBilinearPoolingRMP(nn.Module):
-    """双线性池化CBP算法1，Random Maclaurin Projection
+class CompactBilinearPoolingTSP(nn.Module):
+    """双线性池化CBP算法2，Tensor Sketch Projection
         文章：Multimodal compact bilinear pooling for visual question answering and visual grounding
     Args:
         nn (_type_): _description_
     """
 
     def __init__(self,sensor_nums,config):
-        super(CompactBilinearPoolingRMP, self).__init__()
-        # Define the input dimension c and the output dimension d
+        super(CompactBilinearPoolingTSP, self).__init__()
+        # 定义输入向量的维度和输出向量的维度
         self.c = config.hidden_size
         self.d = config.RMP_d
-        # Generate random but fixed W1 and W2, where each entry is either +1 or -1 with equal probability[^1^][1]
-        self.w1 = (torch.randint(0, 2, (self.d, self.c)) * 2 - 1).float().to(config.device)
-        self.w2 = (torch.randint(0, 2, (self.d, self.c)) * 2 - 1).float().to(config.device)
 
+        # 生成随机但固定的哈希函数和符号函数
+        torch.manual_seed(0) # 设置随机种子，保证结果可复现
+        self.h1 = torch.randint(1, self.d + 1, (self.c,)).to(config.device) # 生成一个长度为c的整数向量，每个元素在[1, d]之间
+        self.h2 = torch.randint(1, self.d + 1, (self.c,)).to(config.device)
+        self.s1 = torch.randint(0, 2, (self.c,)).to(config.device) * 2 - 1 # 生成一个长度为c的整数向量，每个元素为+1或-1
+        self.s2 = torch.randint(0, 2, (self.c,)).to(config.device) * 2 - 1
 
         self.config = config
         self.sensor_linear = nn.Linear(sensor_nums,config.hidden_size) 
@@ -31,14 +34,26 @@ class CompactBilinearPoolingRMP(nn.Module):
         self.token_type_embeddings.apply(objectives.init_weights)
         self.transformer = vit.VisionTransformerForViST(img_size=config.img_size,patch_size=config.patch_size,embed_dim=config.hidden_size,depth=config.num_layers,num_heads=config.num_heads,mlp_ratio=config.mlp_ratio,qkv_bias=False,qk_scale=None)
 
-    # Define the feature map function
-    def phi_RM(self,x,device):
-        batch_size = x.shape[0]
-        # Assume x is a 3D tensor of size [2, 145, c]
-        x = x.reshape(-1, self.c)  # Reshape x to a 2D tensor of size [(2*145), c]
-        z = torch.sqrt(torch.tensor(1.0 / self.d)) * (self.w1 @ x.t()).t() * (self.w2 @ x.t()).t().to(device) # x.t()是矩阵转置
-        z = z.reshape(batch_size,z.shape[0]//batch_size,self.d) # shape[2,145,10000]
-        return z
+
+    # 定义sketch函数
+    def sketch(self,x, h, s):
+        # x: 输入向量，维度为[batch_size, seq_len, c]
+        # h: 哈希函数，维度为[c]
+        # s: 符号函数，维度为[c]
+        # 返回: 输出向量，维度为[batch_size, seq_len, d]
+        batch_size, seq_len, _ = x.shape
+        Q = torch.zeros((batch_size, seq_len, self.d)).to(self.config.device) # 初始化Q矩阵，维度为[batch_size, seq_len, d]
+        Q.scatter_add_(2, h.unsqueeze(0).unsqueeze(0).expand(batch_size, seq_len, self.c) - 1, x * s.unsqueeze(0).unsqueeze(0).expand(batch_size, seq_len, self.c)) # 根据h和s更新Q矩阵，使用scatter_add_函数实现
+        return Q
+    
+    # 定义Tensor Sketch Projection函数
+    def tensor_sketch_projection(self,x):
+        # x: 输入向量，维度为[batch_size, seq_len, c]
+        # 返回: 输出向量，维度为[batch_size, seq_len, d]
+        Q1 = self.sketch(x, self.h1, self.s1) # 使用第一组哈希函数和符号函数计算sketch
+        Q2 = self.sketch(x, self.h2, self.s2) # 使用第二组哈希函数和符号函数计算sketch
+        return torch.fft.ifft(torch.fft.fft(Q1) * torch.fft.fft(Q2)).real # 使用快速傅里叶变换和逆变换计算输出向量，取实部
+
     
     def forward(self, batch,
         mask_image=False,
@@ -77,9 +92,9 @@ class CompactBilinearPoolingRMP(nn.Module):
         x = x_image
         y = x_sensor
 
-        #使用RMP算法计算两个向量的内积，用来替代原来的外积
-        z_x = self.phi_RM(x,self.config.device)  # The output feature tensor
-        z_y = self.phi_RM(y,self.config.device)  # The output feature tensor
+        #使用TSP算法计算两个向量的内积，用来替代原来的外积
+        z_x = self.tensor_sketch_projection(x)
+        z_y = self.tensor_sketch_projection(y)
         inner_product = torch.sum(z_x * z_y, dim=2)
 
         # Reshape to vector
@@ -92,15 +107,18 @@ class CompactBilinearPoolingRMP(nn.Module):
         x = self.output_linear(bilinear_pool)
 
         return {"cls_output":x}
+    
     def test(self):
-        # Example usage
-        x = torch.randn(2, 145, self.c)  # A random input tensor
-        y = torch.randn(2, 145, self.c)  # A random input tensor
-        z_x = self.phi_RM(x)  # The output feature tensor
-        z_y = self.phi_RM(y)  # The output feature tensor
+        # 生成随机的输入向量，维度为[2, 145, 768]
+        x = torch.randn(2, 145, 768)
+        y = torch.randn(2, 145, 768)
 
-        # Compute the inner product of x and y along the c dimension
+        # 调用Tensor Sketch Projection函数，得到输出向量，维度为[2, 145, 10000]
+        z_x = self.tensor_sketch_projection(x)
+        z_y = self.tensor_sketch_projection(y)
+
+        # 打印输出向量的形状
+        print(x.shape)
+        print(y.shape)
         inner_product = torch.sum(z_x * z_y, dim=2)
-
-        print(inner_product.shape)  # Should print: torch.Size([2, 145])
-
+        print(inner_product.shape)
