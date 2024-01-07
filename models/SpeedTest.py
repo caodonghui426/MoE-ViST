@@ -83,7 +83,7 @@ class config:
     vit = "vit_base_patch32_384"
     hidden_size = 768  # 嵌入向量大小
     num_heads = 12
-    num_layers = 6
+    num_layers = 1
     mlp_ratio = 4
     drop_rate = 0.1
 
@@ -135,27 +135,27 @@ batch = {"image":img,"sensor":sensor}
 
 
 # 运行次数
-times = 10
+times = 1000
 
 
 
 import torch.utils.benchmark as benchmark
 
 def test(model,times):
-    # with torch.no_grad():
-    #     start_time = time.perf_counter()
-    #     for i in range(times):
-    #         model(batch)
-    #     end_time = time.perf_counter()
-    #     elapsed_time = end_time - start_time
-    #     print(f"{model.__class__.__name__}代码运行时间: {elapsed_time:.2f}秒")
     with torch.no_grad():
-        benchmark_result = benchmark.Timer(
-            stmt='model(input_data)',
-            setup='pass',
-            globals={'model': model, 'input_data': batch}
-        ).timeit(times)
-        print("{}代码运行时间:{:.2f}ms".format(model.__class__.__name__,benchmark_result.mean * 1000))
+        start_time = time.perf_counter()
+        for i in range(times):
+            model(batch)
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+        print(f"{model.__class__.__name__}代码运行时间: {elapsed_time:.2f}秒")
+    # with torch.no_grad():
+    #     benchmark_result = benchmark.Timer(
+    #         stmt='model(input_data)',
+    #         setup='pass',
+    #         globals={'model': model, 'input_data': batch}
+    #     ).timeit(times)
+    #     print("{}代码运行时间:{:.2f}ms".format(model.__class__.__name__,benchmark_result.mean * 1000))
 
 def fetch_model(model_name):
     if model_name == "RiceTransformer":
@@ -172,9 +172,11 @@ def fetch_model(model_name):
         return DNNF1(sensor_nums=config.senser_input_num,config=config)
     elif model_name == "DNNF2":
         return DNNF2(sensor_nums=config.senser_input_num,config=config)
+    elif model_name == "RiceFusionMLP":
+        return RiceFusionMLP(sensor_nums=config.senser_input_num,config=config)
 
-model_list = ["RiceTransformer","CNNTransformer","ViST","RiceFusion","RiceFusionCNN","DNNF1","DNNF2"]
-# model_list = ["ViST",]
+# model_list = ["RiceTransformer","CNNTransformer","ViST","RiceFusion","RiceFusionCNN","DNNF1","DNNF2","RiceFusionMLP"]
+model_list = ["ViST",]
 
 for name in model_list:
     print(f"当前times:{times}")
