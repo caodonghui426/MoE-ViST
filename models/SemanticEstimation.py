@@ -18,6 +18,7 @@ class SemanticEstimation(nn.Module):
             config (class): 配置信息
         """
         super().__init__()
+        torch.backends.cudnn.enabled = False
         self.config = config
         self.sensor_linear = nn.Linear(sensor_class_n,config.hidden_size) 
         self.sensor_linear2 = nn.Linear(1,145)
@@ -26,7 +27,7 @@ class SemanticEstimation(nn.Module):
         self.token_type_embeddings.apply(objectives.init_weights)
 
         self.transformer = getattr(vit, config.vit)(
-                pretrained=False, config=vars(config)
+                pretrained=True, config=vars(config)
             )
         # self.transformer = vit.VisionTransformerForViST(img_size=config.img_size,patch_size=config.patch_size,embed_dim=config.hidden_size,depth=config.num_layers,num_heads=config.num_heads,mlp_ratio=config.mlp_ratio,qkv_bias=False,qk_scale=None)
         
@@ -137,9 +138,9 @@ class SemanticEstimation(nn.Module):
         # cls_feats = self.dense(x)
         # cls_feats = self.activation(cls_feats)
         cls_output = self.classifier(cls_feats)
-        # m = nn.Softmax(dim=1)
+        m = nn.Softmax(dim=1)
         
-        m = nn.Sigmoid()
+        # m = nn.Sigmoid()
         cls_output = m(cls_output)
         
         

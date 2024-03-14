@@ -38,7 +38,7 @@ class config:
     debug = True
     sensor_only = False
     crop_name = "total"
-
+    class_num = 4
     
     exp_name = "ViST"
     seed = 101
@@ -274,7 +274,7 @@ def build_model(model_name: str,pre_train):
     if model_name == "CompactBilinearPoolingTSP":
         return CompactBilinearPoolingTSP(sensor_nums=config.senser_input_num,config=config)
     if model_name == "SemanticEstimation":
-        return SemanticEstimation(sensor_class_n=config.senser_input_num,output_class_n = 1,config=config)
+        return SemanticEstimation(sensor_class_n=config.senser_input_num,output_class_n = config.class_num,config=config)
     raise Exception("模型未定义")
     
 
@@ -290,5 +290,6 @@ sensor_input = torch.randn((32,1,config.senser_input_num)).to(config.device)
 batch = {"image":image,"sensor":sensor_input}
 
 output = model(batch)
+print(output.shape)
 
 

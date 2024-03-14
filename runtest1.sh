@@ -1,0 +1,1 @@
+nohup python -u test1.py > nohup1.out 2>&1 &
