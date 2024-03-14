@@ -18,7 +18,7 @@ class SemanticEstimation(nn.Module):
             config (class): 配置信息
         """
         super().__init__()
-        torch.backends.cudnn.enabled = False
+        self.output_class_n = output_class_n
         self.config = config
         self.sensor_linear = nn.Linear(sensor_class_n,config.hidden_size) 
         self.sensor_linear2 = nn.Linear(1,145)
@@ -32,7 +32,10 @@ class SemanticEstimation(nn.Module):
         # self.transformer = vit.VisionTransformerForViST(img_size=config.img_size,patch_size=config.patch_size,embed_dim=config.hidden_size,depth=config.num_layers,num_heads=config.num_heads,mlp_ratio=config.mlp_ratio,qkv_bias=False,qk_scale=None)
         
         self.mlp1 = MLP(290*290,768,2)
+        # self.mlp1.apply(objectives.init_weights)
+        
         self.mlp2 = MLP(290*290,768,2)
+        # self.mlp2.apply(objectives.init_weights)
        
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.activation = nn.Tanh()
@@ -88,6 +91,8 @@ class SemanticEstimation(nn.Module):
         for i, blk in enumerate(self.transformer.blocks): 
             blk = blk.to(self.config.device)
             multimodal_feature,multimodal_feature_attn = blk(multimodal_feature,mask=None) #attn:torch.Size([32, 12, 290, 290]) multimodal_feature:torch.Size([32, 290, 768])
+        multimodal_feature = self.transformer.norm(multimodal_feature)
+
 
         multimodal_feature_X = multimodal_feature
         # attn特征图处理
@@ -138,9 +143,10 @@ class SemanticEstimation(nn.Module):
         # cls_feats = self.dense(x)
         # cls_feats = self.activation(cls_feats)
         cls_output = self.classifier(cls_feats)
-        m = nn.Softmax(dim=1)
-        
-        # m = nn.Sigmoid()
+        if self.output_class_n == 1:
+            m = nn.Sigmoid()
+        else:
+            m = nn.Softmax(dim=1)
         cls_output = m(cls_output)
         
         
