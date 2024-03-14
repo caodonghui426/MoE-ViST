@@ -560,7 +560,7 @@ class VisionTransformer(nn.Module):
         in_chans=3,
         num_classes=1000,
         embed_dim=768,
-        depth=12,
+        depth=3,
         num_heads=12,
         mlp_ratio=4.0,
         qkv_bias=True,

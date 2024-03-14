@@ -225,9 +225,10 @@ class ViST2(nn.Module):
         # cls_feats = self.dense(x)
         # cls_feats = self.activation(cls_feats)
         cls_output = self.classifier(cls_feats)
-        # m = nn.Softmax(dim=1)
-        
-        m = nn.Sigmoid()
+        if self.output_class_n == 1:
+            m = nn.Sigmoid()
+        else:
+            m = nn.Softmax(dim=1)
         cls_output = m(cls_output)
         
         
