@@ -1456,6 +1456,18 @@ def vit_base_patch32_384(pretrained=False, **kwargs):
     )
     return model
 
+@register_model
+def vit_base_patch32_384_SemanticEstimation(pretrained=False, **kwargs):
+    """ ViT-Base model (ViT-B/32) from original paper (https://arxiv.org/abs/2010.11929).
+    ImageNet-1k weights fine-tuned from in21k @ 384x384, source https://github.com/google-research/vision_transformer.
+    """
+    model_kwargs = dict(patch_size=32, embed_dim=768,
+                        depth=1, num_heads=12, **kwargs)
+    model = _create_vision_transformer(
+        "vit_base_patch32_384", pretrained=pretrained, **model_kwargs
+    )
+    return model
+
 
 @register_model
 def vit_large_patch16_224(pretrained=False, **kwargs):
