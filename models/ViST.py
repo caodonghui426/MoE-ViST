@@ -19,6 +19,7 @@ class ViST(nn.Module):
         """
         super().__init__()
         self.config = config
+        self.output_class_n  = output_class_n
         self.sensor_linear = nn.Linear(sensor_class_n,config.hidden_size) 
         self.sensor_linear2 = nn.Linear(1,145)
 
@@ -92,9 +93,12 @@ class ViST(nn.Module):
         # cls_feats = self.dense(x)
         # cls_feats = self.activation(cls_feats)
         cls_output = self.classifier(cls_feats)
-        # m = nn.Softmax(dim=1)
+        if self.output_class_n == 1:
+            m = nn.Sigmoid()
+        else:
+            m = nn.Softmax(dim=1)
         
-        m = nn.Sigmoid()
+        
         cls_output = m(cls_output)
         
         
@@ -128,6 +132,7 @@ class ViST2(nn.Module):
             config (class): 配置信息
         """
         super().__init__()
+        self.output_class_n = output_class_n
         self.config = config
         self.sensor_linear = nn.Linear(sensor_class_n,config.hidden_size) 
         self.sensor_linear2 = nn.Linear(1,145)
@@ -264,6 +269,7 @@ class sensorViST(nn.Module):
         """
         super().__init__()
         self.config = config
+        self.output_class_n = output_class_n
         self.sensor_linear = nn.Linear(sensor_class_n,config.hidden_size) 
         self.sensor_linear2 = nn.Linear(1,145)
         self.token_type_embeddings = nn.Embedding(2, config.hidden_size)
@@ -347,9 +353,11 @@ class sensorViST(nn.Module):
         # cls_feats = self.dense(x)
         # cls_feats = self.activation(cls_feats)
         cls_output = self.classifier(cls_feats)
-        # m = nn.Softmax(dim=1)
-        
-        m = nn.Sigmoid()
+        if self.output_class_n == 1:
+            m = nn.Sigmoid()
+        else:
+            m = nn.Softmax(dim=1)
+
         cls_output = m(cls_output)
         
         ret = {
