@@ -57,34 +57,36 @@ class SemanticEstimation(nn.Module):
         image_embeds=None,
         image_masks=None,
     ):
-        sensor = batch['sensor'].to(self.config.device)
-        sensor_embeds = self.sensor_linear(sensor) # input[1,1,12]  output[1,1,768]
-        sensor_embeds = torch.transpose(sensor_embeds,1,2)
-        sensor_embeds = self.sensor_linear2(sensor_embeds)
-        sensor_embeds = torch.transpose(sensor_embeds,1,2)
-
-        if image_embeds is None and image_masks is None:
-            img = batch["image"].to(self.config.device)
-            (
-                image_embeds, # torch.Size([1, 217, 768])
-                image_masks, # torch.Size([1, 217])
-                patch_index,
-                image_labels,
-            ) = self.transformer.visual_embed(
-                img,
-                max_image_len=self.config.max_image_len,
-                mask_it=mask_image,
-            )
-        else:
-            patch_index, image_labels = (
-                None,
-                None,
-            )
-        # 用embedding对数据输入预处理，降低维度
-        image_embeds = image_embeds + self.token_type_embeddings(
-                torch.full_like(image_masks, image_token_type_idx)
-            )
         
+        # sensor = batch['sensor'].to(self.config.device)
+        # sensor_embeds = self.sensor_linear(sensor) # input[1,1,12]  output[1,1,768]
+        # sensor_embeds = torch.transpose(sensor_embeds,1,2)
+        # sensor_embeds = self.sensor_linear2(sensor_embeds)
+        # sensor_embeds = torch.transpose(sensor_embeds,1,2)
+
+        sensor_embeds = self.sensor_process(batch['sensor'])
+        # if image_embeds is None and image_masks is None:
+        #     img = batch["image"].to(self.config.device)
+        #     (
+        #         image_embeds, # torch.Size([1, 217, 768])
+        #         image_masks, # torch.Size([1, 217])
+        #         patch_index,
+        #         image_labels,
+        #     ) = self.transformer.visual_embed(
+        #         img,
+        #         max_image_len=self.config.max_image_len,
+        #         mask_it=mask_image,
+        #     )
+        # else:
+        #     patch_index, image_labels = (
+        #         None,
+        #         None,
+        #     )
+        # # 用embedding对数据输入预处理，降低维度
+        # image_embeds = image_embeds + self.token_type_embeddings(
+        #         torch.full_like(image_masks, image_token_type_idx)
+        #     )
+        image_embeds = self.image_process(batch['image'])
         x_image = image_embeds # torch.Size([2, 145, 768])
         x_sensor = sensor_embeds # torch.Size([2, 145, 768])
         multimodal_feature = torch.cat([x_image, x_sensor], dim=1) # torch.Size([32, 290, 768])
@@ -165,7 +167,35 @@ class SemanticEstimation(nn.Module):
         ret.update(self.infer(batch))
         return ret
     
+    def image_process(self, image_batch):
+        img = image_batch.to(self.config.device)
 
+        (
+            image_embeds, # torch.Size([1, 217, 768])
+            image_masks, # torch.Size([1, 217])
+            patch_index,
+            image_labels,
+        ) = self.transformer.visual_embed(
+            img,
+            max_image_len=self.config.max_image_len,
+            mask_it=False,
+        )
+
+        # 用embedding对数据输入预处理，降低维度
+        image_embeds = image_embeds + self.token_type_embeddings(
+                torch.full_like(image_masks, 1)
+            )
+        return image_embeds
+
+    def sensor_process(self, sensor_batch):
+
+        sensor = sensor_batch.to(self.config.device)
+        sensor_embeds = self.sensor_linear(sensor) # input[1,1,12]  output[1,1,768]
+        sensor_embeds = torch.transpose(sensor_embeds,1,2)
+        sensor_embeds = self.sensor_linear2(sensor_embeds)
+        sensor_embeds = torch.transpose(sensor_embeds,1,2)
+
+        return sensor_embeds
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(MLP, self).__init__()
