@@ -137,7 +137,7 @@ class SemanticEstimation(nn.Module):
 
 
         # *****************对比语义估计******************
-
+        image_feature, sensor_feature = multimodal_feature_Z.split(145, dim=1)
 
         x = self.transformer.norm(multimodal_feature_Z) # torch.Size([1, 240, 768])
 
@@ -153,8 +153,8 @@ class SemanticEstimation(nn.Module):
         
         
         ret = {
-           "sensor_feats":x_image,
-            "image_feats": x_sensor,
+           "image_feature":image_feature,
+            "sensor_feature": sensor_feature,
             "cls_feats": cls_feats, # class features
             "cls_output":cls_output,
         }
