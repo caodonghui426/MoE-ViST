@@ -20,6 +20,7 @@ Hacked together by / Copyright 2020 Ross Wightman
 import math
 import logging
 from functools import partial
+import deepspeed
 
 import torch
 import torch.nn as nn
@@ -39,6 +40,9 @@ from timm.models.resnet import resnet26d, resnet50d
 from timm.models.resnetv2 import ResNetV2
 from timm.models.registry import register_model
 from torchvision import transforms
+
+from deepspeed.accelerator import get_accelerator
+from deepspeed.moe.utils import split_params_into_different_moe_groups_for_optimizer
 
 _logger = logging.getLogger(__name__)
 
@@ -259,6 +263,43 @@ default_cfgs = {
     ),
 }
 
+class MoE(nn.Module):
+    def __init__(
+        self,
+        in_features,
+        hidden_features=None,
+        out_features=None,
+        act_layer=nn.GELU,
+        drop=0.0,
+        num_experts=4,
+        ep_size=2, # Size of expert parallel world (should be less than total world size)
+        use_residual=False,
+        top_k=1, # default=1, type=int, help="(moe) gating top 1 and 2 supported"
+        min_capacity=0, # (moe) minimum capacity of an expert regardless of the capacity_factor
+        noisy_gate_policy=None, # (moe) noisy gating (only supported with top-1). Valid values are None, RSample, and Jitter
+    ):
+        super().__init__()
+        expert_mlp = Mlp() # TODO
+        self.moe_layer_list = []
+        
+        for n_e in num_experts:
+            # 根据num of experts创建moe layer
+            self.moe_layer_list.append(
+                deepspeed.moe.layer.Moe(
+                    hidden_size=in_features,
+                    expert=expert_mlp,
+                    num_experts=n_e,
+                    ep_size=ep_size,
+                    use_residual=use_residual,
+                    k=top_k,
+                    min_capacity=min_capacity,
+                    noisy_gate_policy=noisy_gate_policy,
+                )
+            )
+        self.moe_layer_list = nn.ModuleList(self.moe_layer_list)
+        # TODO
+
+        
 
 class Mlp(nn.Module):
     def __init__(
