@@ -21,3 +21,7 @@ wandb/
 test/
 test*
 nohup*
+data/
+.fleet/
+.idea/
+.ipynb_checkpoints/
