@@ -3,7 +3,9 @@ from vilt.modules import heads, objectives
 import vilt.modules.vision_transformer as vit
 import torch
 
-class ViST(nn.Module):
+# TODO Test
+
+class MoeViST(nn.Module):
     """图形加传感器
 
     Args:
@@ -29,7 +31,7 @@ class ViST(nn.Module):
         # self.transformer = getattr(vit, config.vit)(
         #         pretrained=False, config=vars(config)
         #     )
-        self.transformer = vit.VisionTransformerForViST(img_size=config.img_size,patch_size=config.patch_size,embed_dim=config.hidden_size,depth=config.num_layers,num_heads=config.num_heads,mlp_ratio=config.mlp_ratio,qkv_bias=False,qk_scale=None)
+        self.transformer = vit.VisionTransformerForMoeViST(img_size=config.img_size,patch_size=config.patch_size,embed_dim=config.hidden_size,depth=config.num_layers,num_heads=config.num_heads,mlp_ratio=config.mlp_ratio,qkv_bias=False,qk_scale=None)
         
        
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
@@ -117,7 +119,7 @@ class ViST(nn.Module):
         ret.update(self.infer(batch))
         return ret
     
-class ViST2(nn.Module):
+class MoeViST2(nn.Module):
     """图像加传感器 self attention + cross attention一起用
 
     Args:
@@ -143,7 +145,7 @@ class ViST2(nn.Module):
         # self.transformer = getattr(vit, config.vit)(
         #         pretrained=False, config=vars(config)
         #     )
-        self.transformer = vit.VisionTransformerForViST(img_size=config.img_size,patch_size=config.patch_size,embed_dim=config.hidden_size,num_heads=config.num_heads,mlp_ratio=config.mlp_ratio,qkv_bias=False,qk_scale=None)
+        self.transformer = vit.VisionTransformerForMoeViST(img_size=config.img_size,patch_size=config.patch_size,embed_dim=config.hidden_size,num_heads=config.num_heads,mlp_ratio=config.mlp_ratio,qkv_bias=False,qk_scale=None)
         self.transformer_self_attn = getattr(vit, config.vit)(
                 pretrained=True, config=vars(config)
             )
@@ -181,10 +183,6 @@ class ViST2(nn.Module):
             blk = blk.to(self.config.device)
             x, _attn = blk(x, mask=None)
         output_sensor = self.transformer_self_attn.norm(x)
-        
-
-        
-
 
         if image_embeds is None and image_masks is None:
             img = batch["image"].to(self.config.device)
@@ -253,7 +251,7 @@ class ViST2(nn.Module):
         return ret
 
 
-class sensorViST(nn.Module):
+class sensorMoeViST(nn.Module):
     """仅传感器
 
     Args:
@@ -382,7 +380,7 @@ class sensorViST(nn.Module):
         return ret
     
 
-class imageViST(nn.Module):
+class imageMoeViST(nn.Module):
     """仅图像
 
     Args:
