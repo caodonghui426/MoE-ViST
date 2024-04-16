@@ -290,7 +290,7 @@ class MoE(nn.Module):
         for n_e in num_experts:
             # 根据num of experts创建moe layer
             self.moe_layer_list.append(
-                deepspeed.moe.layer.Moe(
+                deepspeed.moe.layer.MoE(
                     hidden_size=in_features,
                     expert=self.expert_mlp,
                     num_experts=n_e,
