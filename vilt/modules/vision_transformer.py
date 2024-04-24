@@ -272,7 +272,7 @@ class MoE(nn.Module):
         act_layer=nn.GELU,
         drop=0.0,
         num_experts=[4],
-        ep_size=2, # Size of expert parallel world (should be less than total world size)
+        ep_size=1, # Size of expert parallel world (should be less than total world size)
         use_residual=False,
         top_k=1, # default=1, type=int, help="(moe) gating top 1 and 2 supported"
         min_capacity=0, # (moe) minimum capacity of an expert regardless of the capacity_factor
